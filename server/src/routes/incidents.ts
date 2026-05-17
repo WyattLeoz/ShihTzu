@@ -4,7 +4,7 @@ import { query, transaction } from '../config/db.js';
 import logger from '../config/logger.js';
 import { asyncHandler, AuthenticatedRequest } from '../middleware/errorHandler.js';
 import { validateRequest } from '../middleware/validate.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireRole, optionalAuth } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -19,8 +19,7 @@ function generateTicketNumber(): string {
 // GET /api/incidents
 router.get(
   '/',
-  requireAuth,
-  requireRole('responder', 'supervisor', 'gov_admin'),
+  optionalAuth,
   [
     queryValidator('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
     queryValidator('offset').optional().isInt({ min: 0 }).toInt(),

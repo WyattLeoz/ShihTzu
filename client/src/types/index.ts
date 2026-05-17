@@ -20,6 +20,7 @@ export interface AuthResponse {
 export type IncidentType = 'medical' | 'flood' | 'fire' | 'road' | 'infrastructure' | 'civil' | 'other';
 export type IncidentStatus = 'open' | 'triaging' | 'dispatched' | 'on_scene' | 'resolved' | 'closed';
 export type IncidentSeverity = 1 | 2 | 3;
+export type Severity = 'low' | 'medium' | 'high' | 'critical';
 export type UpdateType = 'status_change' | 'field_update' | 'note' | 'dispatch' | 'notification' | 'system';
 
 export interface Incident {

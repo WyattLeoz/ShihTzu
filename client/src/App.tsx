@@ -7,10 +7,12 @@ import { User } from './types';
 import { authStore } from './stores/authStore';
 
 // Direct imports for debugging
-import { ResponderPortal } from './features/responder/ResponderPortal';
 import { GovPortal } from './features/gov/GovPortal';
 import { PublicPortal } from './features/public/PublicPortal';
 import { LoginPage } from './features/public/LoginPage';
+import ResponderRouter from './features/responder';
+import GovRouter from './features/gov';
+import { RoleRedirect } from './components/RoleRedirect';
 
 // Auth guard component
 function ProtectedRoute({ allowedRoles }: { allowedRoles: User['role'][] }) {
@@ -46,6 +48,9 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/public/*" element={<PublicPortal />} />
 
+          {/* Role-based redirect */}
+          <Route path="/" element={<RoleRedirect />} />
+
           {/* Responder portal */}
           <Route
             path="/responder/*"
@@ -53,7 +58,7 @@ function App() {
               <ProtectedRoute allowedRoles={['responder', 'supervisor', 'gov_admin']} />
             }
           >
-            <Route path="*" element={<ResponderPortal />} />
+            <Route path="*" element={<ResponderRouter />} />
           </Route>
 
           {/* Government portal */}
@@ -61,11 +66,11 @@ function App() {
             path="/gov/*"
             element={<ProtectedRoute allowedRoles={['gov_admin']} />}
           >
-            <Route path="*" element={<GovPortal />} />
+            <Route path="*" element={<GovRouter />} />
           </Route>
 
-          {/* Default redirect */}
-          <Route path="/" element={<Navigate to="/public" replace />} />
+          {/* Default redirect for non-authenticated users */}
+          <Route path="/home" element={<Navigate to="/public" replace />} />
 
           {/* Unauthorized */}
           <Route

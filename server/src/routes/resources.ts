@@ -3,14 +3,14 @@ import { body, param, query as queryValidator } from 'express-validator';
 import { query } from '../config/db.js';
 import { asyncHandler, AuthenticatedRequest } from '../middleware/errorHandler.js';
 import { validateRequest } from '../middleware/validate.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireRole, optionalAuth } from '../middleware/auth.js';
 
 const router = Router();
 
 // GET /api/resources/hospitals
 router.get(
   '/hospitals',
-  requireAuth,
+  optionalAuth,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const result = await query({
       text: `SELECT
@@ -131,7 +131,7 @@ router.patch(
 // GET /api/resources/volunteers
 router.get(
   '/volunteers',
-  requireAuth,
+  optionalAuth,
   [
     queryValidator('skill').optional().trim(),
     queryValidator('available').optional().isIn(['true', 'false']),

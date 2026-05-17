@@ -48,7 +48,9 @@ export function useCreateIncident() {
       locationText: string;
       locationLat?: number;
       locationLng?: number;
-      severity?: number;
+      severity?: number | string;
+      estimatedCasualties?: number;
+      contactInfo?: string;
     }) => apiClient.post<{ message: string; ticketNumber: string }>('/incidents', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });

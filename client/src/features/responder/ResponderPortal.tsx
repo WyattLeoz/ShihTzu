@@ -107,6 +107,9 @@ export function ResponderPortal() {
 
       {/* Main content */}
       <main className="flex-1 overflow-auto bg-paper">
+        <div className="p-4 text-ink-muted text-sm">
+          Debug: {location.pathname}
+        </div>
         <Outlet />
       </main>
     </div>

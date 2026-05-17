@@ -468,3 +468,14 @@ Public portal — home → report form → volunteer signup
 README.md + .env.example
 
 After each major section, verify it compiles before moving on. Do not generate placeholder implementations — every function must do what it says.
+
+
+
+
+
+
+
+extra
+continue the previous prompt and 
+for the citizens i want a section where they can see available like (open) volunteering tasks they can own-self volunteer if they wish to, instead
+of a volunteer button at the top

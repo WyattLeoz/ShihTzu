@@ -124,15 +124,20 @@ async function startServer() {
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-    // Handle uncaught errors
+    // Handle uncaught errors - log but don't crash immediately
     process.on('uncaughtException', (error) => {
       logger.error({ error }, 'Uncaught exception');
-      gracefulShutdown('uncaughtException');
+      // Only shutdown on critical errors
+      if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
+        gracefulShutdown('uncaughtException');
+      }
     });
 
+    // Handle unhandled rejections - log but don't crash immediately
     process.on('unhandledRejection', (reason, promise) => {
       logger.error({ reason, promise }, 'Unhandled rejection');
-      gracefulShutdown('unhandledRejection');
+      // Don't crash the server on unhandled rejections, just log them
+      // This prevents the server from shutting down due to minor errors
     });
   } catch (error) {
     logger.error({ error }, 'Failed to start server');

@@ -3,14 +3,18 @@ import { Link } from 'react-router-dom';
 import { useIncidents } from '../../api/incidents';
 import { useHospitals, useVolunteers } from '../../api/resources';
 import { useBroadcasts } from '../../api/broadcasts';
+import { useCreateIncident } from '../../api/incidents';
 import { StatusBadge } from '../../components/StatusBadge';
 import { formatIncidentType, formatSeverity, getSeverityBorderColor } from '../../lib/formatters';
-import { IncidentListItem, Hospital, Volunteer, Broadcast } from '../../types';
-import { MapPin, Clock, Phone, Bed, Activity, UserCheck, AlertTriangle } from 'lucide-react';
+import { IncidentListItem, Hospital, Volunteer, Broadcast, IncidentType, Severity } from '../../types';
+import { MapPin, Clock, Phone, Bed, Activity, UserCheck, AlertTriangle, Plus, Send, X, Navigation, UserPlus } from 'lucide-react';
+import { VolunteerRegistration } from './VolunteerRegistration';
 
 export function PublicPortal() {
   const [activeTab, setActiveTab] = useState<'incidents' | 'resources' | 'broadcasts'>('incidents');
   const [resourceTab, setResourceTab] = useState<'hospitals' | 'volunteers'>('hospitals');
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [showVolunteerForm, setShowVolunteerForm] = useState(false);
 
   // API queries
   const { data: incidentsData, isLoading: incidentsLoading, error: incidentsError } = useIncidents({ limit: 20 });
@@ -28,10 +32,41 @@ export function PublicPortal() {
       {/* Header */}
       <div className="h-12 bg-white border-b border-paper-border flex items-center justify-between px-4">
         <h1 className="font-semibold text-ink">QuickAid</h1>
-        <Link to="/login" className="text-sm text-teal hover:text-teal-dark">
-          Login
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowVolunteerForm(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-navy text-white text-sm rounded-sm hover:bg-navy-dark transition-colors"
+          >
+            <UserPlus size={14} />
+            Volunteer
+          </button>
+          <button
+            onClick={() => setShowReportForm(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-teal text-white text-sm rounded-sm hover:bg-teal-dark transition-colors"
+          >
+            <Plus size={14} />
+            Report
+          </button>
+          <Link to="/login" className="text-sm text-teal hover:text-teal-dark">
+            Login
+          </Link>
+        </div>
       </div>
+
+      {/* Incident Report Form Modal */}
+      {showReportForm && (
+        <IncidentReportForm onClose={() => setShowReportForm(false)} />
+      )}
+
+      {/* Volunteer Registration Modal */}
+      {showVolunteerForm && (
+        <VolunteerRegistration
+          onClose={() => setShowVolunteerForm(false)}
+          onSuccess={() => {
+            // Refresh volunteer list after successful registration
+          }}
+        />
+      )}
 
       {/* Main Tabs */}
       <div className="bg-white border-b border-paper-border">
@@ -412,6 +447,238 @@ function BroadcastsList({ broadcasts, isLoading, error }: {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function IncidentReportForm({ onClose }: { onClose: () => void }) {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    locationText: '',
+    type: 'medical' as IncidentType,
+    severity: 'medium' as Severity,
+    estimatedCasualties: '',
+    contactInfo: ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  const { mutate: createIncident } = useCreateIncident();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      await createIncident({
+        title: formData.title,
+        description: formData.description,
+        locationText: formData.locationText,
+        type: formData.type,
+        severity: formData.severity,
+        estimatedCasualties: formData.estimatedCasualties ? parseInt(formData.estimatedCasualties) : undefined,
+        contactInfo: formData.contactInfo
+      });
+
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        onClose();
+        setSubmitSuccess(false);
+        setFormData({
+          title: '',
+          description: '',
+          locationText: '',
+          type: 'medical',
+          severity: 'medium',
+          estimatedCasualties: '',
+          contactInfo: ''
+        });
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to submit incident:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (submitSuccess) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-sm p-6 max-w-sm w-full text-center">
+          <div className="w-16 h-16 bg-teal-light rounded-full flex items-center justify-center mx-auto mb-4">
+            <Send size={32} className="text-teal" />
+          </div>
+          <h3 className="text-lg font-semibold text-ink mb-2">Incident Reported</h3>
+          <p className="text-sm text-ink-muted mb-4">
+            Your incident has been submitted and will be reviewed by emergency responders.
+          </p>
+          <p className="text-xs text-ink-muted">
+            You will receive updates as your incident is processed.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-sm max-w-md w-full max-h-[90vh] overflow-auto">
+        {/* Header */}
+        <div className="h-14 bg-navy flex items-center justify-between px-4">
+          <h2 className="text-white font-semibold">Report Incident</h2>
+          <button
+            onClick={onClose}
+            className="text-white hover:text-white/80"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Title *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="Brief description of the incident"
+              className="w-full px-3 py-2 border border-paper-border rounded-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            />
+          </div>
+
+          {/* Type */}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Incident Type *
+            </label>
+            <select
+              required
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value as IncidentType })}
+              className="w-full px-3 py-2 border border-paper-border rounded-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
+              <option value="medical">Medical Emergency</option>
+              <option value="fire">Fire</option>
+              <option value="accident">Traffic Accident</option>
+              <option value="natural_disaster">Natural Disaster</option>
+              <option value="security">Security Threat</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Severity */}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Severity *
+            </label>
+            <select
+              required
+              value={formData.severity}
+              onChange={(e) => setFormData({ ...formData, severity: e.target.value as Severity })}
+              className="w-full px-3 py-2 border border-paper-border rounded-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
+              <option value="low">Low - Minor incident</option>
+              <option value="medium">Medium - Requires attention</option>
+              <option value="high">High - Urgent response needed</option>
+              <option value="critical">Critical - Life-threatening</option>
+            </select>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Location *
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                required
+                value={formData.locationText}
+                onChange={(e) => setFormData({ ...formData, locationText: e.target.value })}
+                placeholder="Address or location description"
+                className="w-full px-3 py-2 border border-paper-border rounded-sm focus:outline-none focus:ring-2 focus:ring-teal pr-10"
+              />
+              <Navigation size={16} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-ink-muted" />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Description *
+            </label>
+            <textarea
+              required
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Provide details about what happened..."
+              rows={4}
+              className="w-full px-3 py-2 border border-paper-border rounded-sm focus:outline-none focus:ring-2 focus:ring-teal resize-none"
+            />
+          </div>
+
+          {/* Estimated Casualties */}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Estimated Casualties (if applicable)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={formData.estimatedCasualties}
+              onChange={(e) => setFormData({ ...formData, estimatedCasualties: e.target.value })}
+              placeholder="Number of people affected"
+              className="w-full px-3 py-2 border border-paper-border rounded-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            />
+          </div>
+
+          {/* Contact Info */}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Contact Information *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.contactInfo}
+              onChange={(e) => setFormData({ ...formData, contactInfo: e.target.value })}
+              placeholder="Your name and phone number"
+              className="w-full px-3 py-2 border border-paper-border rounded-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            />
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-teal text-white font-medium rounded-sm hover:bg-teal-dark transition-colors disabled:bg-teal-light disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              <>
+                <Send size={16} />
+                Submit Incident Report
+              </>
+            )}
+          </button>
+
+          {/* Disclaimer */}
+          <p className="text-xs text-ink-muted text-center">
+            By submitting this report, you agree that the information provided is accurate to the best of your knowledge.
+            False reports may result in legal consequences.
+          </p>
+        </form>
+      </div>
     </div>
   );
 }

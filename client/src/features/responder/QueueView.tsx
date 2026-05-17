@@ -12,6 +12,7 @@ import { Button } from '../../components/Button';
 import { Search, Plus, Filter, ArrowUpDown } from 'lucide-react';
 
 export function QueueView() {
+  console.log('QueueView rendered');
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<IncidentType | 'all'>('all');
