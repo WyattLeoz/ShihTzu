@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(netstat:*)",
+      "Bash(npx tsx:*)",
+      "Bash(taskkill:*)",
+      "Bash(tasklist:*)",
+      "Bash(curl:*)",
+      "Bash(xargs grep -l \"checkAuth\\\\|login\")",
+      "Bash(psql:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

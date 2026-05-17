@@ -1,0 +1,470 @@
+You are building QuickAid — a production-grade emergency triage command platform for Singapore government and emergency services. This is not a prototype. It will be used by real operators, real responders, and real government officials. Every decision — architecture, error handling, security, UX — must reflect that.
+Read this entire prompt before writing a single line of code. Plan the full architecture first, then implement file by file.
+
+Stack
+Frontend: React 18 + Vite + TypeScript + React Router v6 + Tailwind CSS + Framer Motion + Recharts + React-Leaflet + TanStack Query (React Query) + Zustand + React Hook Form + Zod
+Backend: Node.js + Express + TypeScript + PostgreSQL (via pg + node-postgres) + express-validator + helmet + cors + express-rate-limit + pino (structured logging) + dotenv
+Auth: JWT (access token 15min + refresh token 7 days, httpOnly cookie for refresh) with role-based access control. Roles: citizen, responder, supervisor, gov_admin.
+AI: Anthropic Claude API (claude-sonnet-4-20250514) via backend proxy only — API key never touches the frontend. Streaming via SSE.
+Real-time: PostgreSQL LISTEN/NOTIFY piped through SSE endpoint to frontend. No polling.
+File structure:
+/
+├── server/
+│   ├── src/
+│   │   ├── config/         db.ts, env.ts, logger.ts
+│   │   ├── middleware/      auth.ts, validate.ts, rateLimit.ts, errorHandler.ts
+│   │   ├── routes/          auth.ts, incidents.ts, tickets.ts, resources.ts, broadcasts.ts, volunteers.ts, ai.ts, sse.ts
+│   │   ├── services/        claude.ts, notifications.ts, ticketEngine.ts
+│   │   ├── db/              migrations/, seeds/, queries/
+│   │   └── index.ts
+│   ├── package.json
+│   └── tsconfig.json
+├── client/
+│   ├── src/
+│   │   ├── api/             client.ts, incidents.ts, auth.ts, ai.ts, resources.ts
+│   │   ├── components/      (shared UI — never portal-specific)
+│   │   ├── features/
+│   │   │   ├── responder/
+│   │   │   ├── gov/
+│   │   │   └── public/
+│   │   ├── hooks/           useSSE.ts, useTickets.ts, useAuth.ts, useClaudeStream.ts
+│   │   ├── stores/          ticketStore.ts, authStore.ts, broadcastStore.ts
+│   │   ├── types/           index.ts  (all shared types)
+│   │   ├── lib/             utils.ts, constants.ts, formatters.ts
+│   │   └── main.tsx
+│   ├── package.json
+│   └── vite.config.ts
+├── .env.example
+└── README.md
+
+Database schema
+Write all migrations as numbered SQL files in server/src/db/migrations/. Run them in order. Use created_at, updated_at with DEFAULT now() on every table. Never use SERIAL — use uuid_generate_v4() as default for all primary keys.
+sql-- 001_extensions.sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- for fast text search on incidents
+
+-- 002_users.sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('citizen','responder','supervisor','gov_admin')),
+  unit TEXT,           -- e.g. "SCDF Station 4", "MOH Operations"
+  phone TEXT,
+  is_active BOOLEAN DEFAULT true,
+  last_login_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 003_incidents.sql
+CREATE TABLE incidents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  ticket_number TEXT UNIQUE NOT NULL, -- e.g. INC-20260517-0042, generated server-side
+  type TEXT NOT NULL CHECK (type IN ('medical','flood','fire','road','infrastructure','civil','other')),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  location_text TEXT NOT NULL,
+  location_lat DECIMAL(9,6),
+  location_lng DECIMAL(9,6),
+  severity INTEGER NOT NULL CHECK (severity IN (1,2,3)), -- 1=critical, 2=high, 3=medium
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','triaging','dispatched','on_scene','resolved','closed')),
+  reported_by UUID REFERENCES users(id),
+  assigned_to UUID REFERENCES users(id),
+  ai_triage_data JSONB,         -- stores full AI response
+  approved_option INTEGER,      -- which option (1/2/3) was approved
+  approved_by UUID REFERENCES users(id),
+  approved_at TIMESTAMPTZ,
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_incidents_status ON incidents(status);
+CREATE INDEX idx_incidents_severity ON incidents(severity);
+CREATE INDEX idx_incidents_created_at ON incidents(created_at DESC);
+CREATE INDEX idx_incidents_search ON incidents USING gin(to_tsvector('english', title || ' ' || description));
+
+-- 004_incident_updates.sql
+CREATE TABLE incident_updates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  incident_id UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+  author_id UUID REFERENCES users(id),
+  update_type TEXT NOT NULL CHECK (update_type IN ('status_change','field_update','note','dispatch','notification','system')),
+  content TEXT NOT NULL,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_updates_incident ON incident_updates(incident_id, created_at DESC);
+
+-- 005_resources.sql
+CREATE TABLE hospitals (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  short_name TEXT NOT NULL,
+  address TEXT NOT NULL,
+  lat DECIMAL(9,6) NOT NULL,
+  lng DECIMAL(9,6) NOT NULL,
+  total_beds INTEGER NOT NULL,
+  available_beds INTEGER NOT NULL,
+  icu_available INTEGER NOT NULL,
+  trauma_bays INTEGER NOT NULL,
+  last_updated_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE volunteers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id),
+  full_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  skills TEXT[] NOT NULL DEFAULT '{}',
+  postal_district TEXT,
+  is_available BOOLEAN DEFAULT true,
+  last_active_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 006_broadcasts.sql
+CREATE TABLE broadcasts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  audience TEXT NOT NULL CHECK (audience IN ('all','responders','zone')),
+  zone TEXT,
+  sent_by UUID NOT NULL REFERENCES users(id),
+  incident_id UUID REFERENCES incidents(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 007_notifications_trigger.sql
+-- PostgreSQL NOTIFY trigger so backend SSE can push real-time updates
+CREATE OR REPLACE FUNCTION notify_incident_change()
+RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('incident_updates', row_to_json(NEW)::text);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER incident_change_trigger
+AFTER INSERT OR UPDATE ON incidents
+FOR EACH ROW EXECUTE FUNCTION notify_incident_change();
+
+CREATE OR REPLACE FUNCTION notify_incident_update_insert()
+RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('timeline_updates', row_to_json(NEW)::text);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER incident_update_trigger
+AFTER INSERT ON incident_updates
+FOR EACH ROW EXECUTE FUNCTION notify_incident_update_insert();
+Write a seed file server/src/db/seeds/001_seed.sql with:
+
+4 users: one per role, passwords all Demo1234! (bcrypt hashed, put actual hash in seed)
+15 incidents spread across Singapore with realistic data (real street names, real incident types)
+6 hospitals with realistic bed counts (SGH, TTSH, NUH, CGH, KTPH, Alexandra Hospital)
+20 volunteers
+5 broadcasts
+
+Write a server/src/db/migrate.ts script and server/src/db/seed.ts script. Add npm run migrate and npm run seed to package.json.
+
+Backend — implement completely
+server/src/config/env.ts
+Validate all required env vars on startup using a schema. If any are missing, log a clear error and process.exit(1). Required vars:
+DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET, ANTHROPIC_API_KEY,
+PORT (default 3001), NODE_ENV, CORS_ORIGIN, BCRYPT_ROUNDS (default 12)
+server/src/config/db.ts
+PostgreSQL connection pool. Max 20 connections. Connection timeout 10s. Log slow queries (>1000ms) via pino. Export query() helper that wraps pool.query with error logging. Export transaction() helper for multi-statement transactions.
+server/src/middleware/auth.ts
+
+requireAuth — validates JWT from Authorization: Bearer header. Attaches req.user = {id, email, role, unit} on success. Returns 401 on missing/invalid/expired token.
+requireRole(...roles) — checks req.user.role is in the allowed list. Returns 403 on mismatch.
+optionalAuth — same as requireAuth but doesn't reject if no token (for public endpoints that show more data when logged in)
+
+server/src/middleware/errorHandler.ts
+Global Express error handler. Catches all thrown errors. Distinguishes between:
+
+Validation errors (400) — from express-validator
+Auth errors (401/403) — return generic messages, never leak specifics
+Not found (404)
+Database errors (500) — log full error internally via pino, return sanitized message to client
+Claude API errors (502) — specific message
+Never return stack traces or internal error messages to the client in production.
+
+API routes — implement all of these fully:
+POST /api/auth/register — create user, hash password with bcrypt, return tokens
+POST /api/auth/login — verify password, return { accessToken, user }, set refresh token as httpOnly cookie
+POST /api/auth/refresh — reads refresh token cookie, issues new access token
+POST /api/auth/logout — clears refresh token cookie
+GET /api/auth/me — returns current user from token
+GET /api/incidents — paginated (limit/offset), filterable by status, type, severity, date range. Full-text search via ?q=. Requires responder role or above.
+POST /api/incidents — create incident, auto-generate ticket_number (INC-YYYYMMDD-XXXX), insert initial timeline entry, fire pg_notify. Requires auth.
+GET /api/incidents/:id — full incident with timeline, assigned user, AI triage data
+PATCH /api/incidents/:id — partial update. Each field change logs a timeline entry automatically. Requires responder+.
+PATCH /api/incidents/:id/approve — approve an AI option. Sets approved_option, approved_by, approved_at, transitions status to dispatched, triggers notifications service, logs timeline. Requires responder+.
+PATCH /api/incidents/:id/status — explicit status transition with validation (can't go backward). Logs timeline entry.
+GET /api/resources/hospitals — all hospitals with current bed counts
+PATCH /api/resources/hospitals/:id — update bed counts (requires gov_admin)
+GET /api/resources/volunteers — available volunteers, optionally filtered by skill
+POST /api/broadcasts — create broadcast, requires gov_admin or supervisor
+GET /api/broadcasts — paginated, newest first
+POST /api/ai/triage — accepts { incidentId }. Fetches incident from DB. Builds full context prompt including live hospital data and volunteer counts. Streams Claude response back to client via SSE. Saves final parsed result to incidents.ai_triage_data on stream completion. Requires responder+. Rate limited to 10 req/min per user.
+GET /api/sse — Server-Sent Events endpoint. Requires auth. Opens a pg LISTEN connection on incident_updates and timeline_updates channels. Sends keepalive every 25s. Cleans up pg listener on client disconnect. Send typed events: { type: 'incident_updated' | 'timeline_added' | 'broadcast_sent', payload: {...} }.
+server/src/services/claude.ts
+typescript// Full streaming implementation
+// System prompt must be built from live DB data, not hardcoded
+// After stream completes, parse JSON block from end of streamed text
+// Validate parsed JSON with Zod before saving to DB
+// Handle: network errors, Anthropic API errors, malformed JSON
+// Retry logic: 2 retries on 529 (overloaded) with exponential backoff
+The Claude system prompt (built dynamically in this service):
+You are QuickAid Triage AI, deployed by the Singapore Civil Defence Force and Ministry of Health.
+You assist human operators in making fast, informed emergency dispatch decisions.
+You never make the final call — you support the human operator.
+
+Current resource snapshot (live data injected here):
+HOSPITALS: [array of {name, available_beds, icu_available, trauma_bays, address, distance_km}]
+VOLUNTEERS ON DUTY: [count by skill]
+
+INCIDENT:
+Type: {type}
+Severity: {severity} ({label})
+Location: {location_text} ({lat}, {lng})
+Description: {description}
+Reported: {time ago}
+
+Respond in two parts:
+PART 1 — Write a concise triage assessment (3–5 sentences). Cover: nature of incident, immediate risk, key resource constraints. Write for a trained operator — no hand-holding.
+
+PART 2 — Output exactly this JSON block (no markdown fences, just raw JSON after the text):
+{"options":[
+  {"rank":1,"action":"...","rationale":"...","resources_required":["..."],"notify":["..."],"eta_minutes":N,"confidence":N},
+  {"rank":2,...},
+  {"rank":3,...}
+]}
+
+Rules:
+- Name real Singapore hospitals, agencies (SCDF, SPF, MOH, SFA, PUB, LTA), and landmarks
+- Options must be meaningfully different (different resource tradeoffs, not just rewordings)
+- confidence is 0–100. Be honest — if data is insufficient, say so in rationale and lower confidence
+- notify array = who gets auto-notified if this option is approved
+- Never recommend an action you don't have resources for
+
+Frontend — implement completely
+API client (client/src/api/client.ts)
+Axios instance with:
+
+baseURL from VITE_API_URL env var
+Request interceptor: attach Authorization: Bearer {accessToken} from Zustand authStore
+Response interceptor: on 401, attempt token refresh via POST /api/auth/refresh, retry original request once, on second 401 redirect to login
+All requests typed with TypeScript generics
+Timeout: 15s
+
+Auth (client/src/hooks/useAuth.ts + client/src/stores/authStore.ts)
+Zustand store: { user, accessToken, isLoading, login, logout, refreshToken }. Persist user to localStorage (not the token — only user metadata). On app load, attempt silent refresh before rendering protected routes.
+Real-time (client/src/hooks/useSSE.ts)
+Custom hook that opens EventSource to /api/sse with auth header (use a URL param token since EventSource doesn't support custom headers). On incident_updated events: update TanStack Query cache directly (don't refetch). On disconnect: exponential backoff reconnect (max 30s). Expose connectionState: 'connecting' | 'connected' | 'disconnected'.
+AI streaming (client/src/hooks/useClaudeStream.ts)
+typescript// Calls POST /api/ai/triage with fetch (not axios) for streaming support
+// Returns: { streamedText, isStreaming, options, error, trigger }
+// Parses JSON from end of stream using a buffer
+// options populate progressively as JSON is detected complete
+// On error: specific error messages (rate limited / AI unavailable / parse error)
+
+Design system
+Add to tailwind.config.ts:
+jsfontFamily: {
+  sans: ['"DM Sans"', 'sans-serif'],
+  mono: ['"DM Mono"', 'monospace'],
+},
+colors: {
+  teal:  { DEFAULT:'#1D9E75', light:'#E1F5EE', dark:'#0F6E56', border:'#9FE1CB' },
+  red:   { DEFAULT:'#E24B4A', light:'#FCEBEB', dark:'#A32D2D', border:'#F5C4B3' },
+  amber: { DEFAULT:'#EF9F27', light:'#FAEEDA', dark:'#854F0B', border:'#FAC775' },
+  navy:  { DEFAULT:'#042C53', mid:'#185FA5',   light:'#E6F1FB', border:'#B5D4F4' },
+  ink:   { DEFAULT:'#1A1917', mid:'#3D3D3A',   muted:'#888780', faint:'#C4C2BA' },
+  paper: { DEFAULT:'#FAFAF8', card:'#FFFFFF',  border:'#E8E5DC', hover:'#F5F3EE' },
+}
+Import DM Sans + DM Mono from Google Fonts in index.html.
+Visual language: Utilitarian precision. 1px borders, not shadows. 0px radius on status badges and alert banners (urgency). 4px radius on cards. 8px on modals. DM Mono for all ticket IDs, timestamps, numbers, status labels. Every color carries semantic meaning — never decorative. Information density is a feature, not a problem.
+
+Portal 1 — Responder (build this completely first, it is the product)
+Route: /responder — requires role responder, supervisor, or gov_admin
+Layout: Fixed left sidebar 256px. Main scrollable content. Both full viewport height with no page scroll — only inner areas scroll.
+Sidebar:
+
+Logo + "QuickAid Ops" 14px semibold
+Live connection indicator: green dot "LIVE" (DM Mono 10px) when SSE connected, amber "RECONNECTING" when not. This is not cosmetic — operators must know if they have live data.
+Nav items: Queue, New Incident, Resources, Map. Active = full navy bg, white text, no soft tints.
+Bottom: logged-in user name + role chip + logout button
+
+Queue view (/responder/queue):
+Implement as a proper HTML table with <thead> and <tbody>. Sticky header. Columns:
+#ColumnWidthContent1Severity4pxColored left border only (red/amber/teal). The entire row has a 2px left border.2Ticket100pxINC-20260517-0042 DM Mono 12px. Type emoji below in 16px.3IncidentflexTitle 14px semibold ink. Address 12px muted DM Mono below.4AI Score80pxA pill: 0–100 number in DM Mono 13px semibold. Color: ≥80 teal, 50–79 amber, <50 red. Show "—" if not yet triaged.5Status100pxOPEN / TRIAGING / DISPATCHED / ON SCENE / RESOLVED. DM Mono 10px uppercase. 0px radius. Semantic colors.6Elapsed80pxTime since creation in DM Mono 12px. Red if >15min and still OPEN. Update every 30s on client.
+Toolbar above table: search input (full-text, debounced 300ms, calls API), filter chips (All/Medical/Flood/Fire/Road), sort toggle (Newest / Highest severity / AI Score). Live count badge ("15 open"). A "New incident" button top right (teal, goes to /responder/new).
+Row click → navigate to /responder/ticket/:id. Selected row: 3px navy left border.
+Table must handle: empty state (no incidents match filter), loading state (skeleton rows), error state (failed to fetch — retry button).
+New Incident form (/responder/new):
+Built with React Hook Form + Zod. Full validation on every field before submission.
+Fields:
+
+Incident type (segmented control, not a dropdown — 7 options with emoji icons, fully clickable)
+Title (required, 10–120 chars, character counter)
+Severity (3 large radio cards — "1 Critical", "2 High", "3 Medium" with descriptions of what each means)
+Location text (required)
+Lat/Lng (optional — populated by a "Pin on map" button that opens an inline Leaflet map where the operator clicks to drop a pin)
+Description (required, min 20 chars, character counter)
+
+On submit: POST to /api/incidents. On success: redirect to the new ticket detail page. Show inline validation errors on blur. Show a submission error toast if API fails. The submit button shows a spinner and is disabled during submission — no double-submit.
+Ticket detail (/responder/ticket/:id) — THE CORE FEATURE:
+This is a full-page layout, not a modal. Two columns: 58% left, 42% right. Both independently scrollable.
+Top bar (full width):
+Ticket number DM Mono 14px. Status badge (live-updating via SSE). Severity badge. Created time. Assigned to chip. "← Back to queue" link left. Right: "Edit" button (supervisors only), "Escalate" button.
+Left panel:
+Section 1 — Incident details:
+Display all incident fields as labeled pairs (not form inputs unless in edit mode). Clean two-column grid: label 11px mono uppercase muted / value 14px ink. Full description in a #F5F3EE block, DM Mono 13px, like an official report.
+Section 2 — AI Triage (the centrepiece):
+State machine with 4 states, each with a distinct UI:
+State A — Not triaged yet:
+A clean bordered section. "AI TRIAGE" header 10px mono. Brief explainer: "Run AI triage to get ranked response options based on live hospital capacity and available resources." A large "RUN AI TRIAGE" button (full width, navy, 48px, DM Sans 600). Show current resource counts as small chips below: "SGH 85 beds available · 14 volunteers on duty".
+State B — Streaming:
+The button becomes a loading bar (animated progress, indeterminate). A streaming text area appears: DM Mono 13px, ink color, line height 1.6. Text streams in token by token. A blinking cursor █ at the end. The section has a 1px navy top border and "AI ANALYSIS IN PROGRESS" 10px mono teal header. No option cards yet.
+State C — Options ready (stream complete, awaiting approval):
+The streamed prose stays visible above, now without cursor. Below it: "RESPONSE OPTIONS" 10px mono header. Three option cards animate in with Framer Motion stagger (150ms each, y: 16 → 0, opacity: 0 → 1).
+Each option card (1px border, 4px radius, 16px padding, white bg):
+
+Header row: rank badge (navy square 28px, DM Mono 16px white), action title 14px semibold, confidence score right-aligned (DM Mono 13px, colored)
+Confidence bar: 6px tall, full width, teal/amber/red fill based on value, 0px radius
+Rationale: 13px muted, line height 1.5
+Resource chips: gray pills 0px radius, DM Mono 11px — e.g. "SGH trauma bay", "SCDF Station 4", "2 volunteers"
+Notify list: small section "Will notify:" with entity names
+ETA: "Est. ~8 min" DM Mono 12px right-aligned
+CTA: Rank 1 gets "APPROVE & DISPATCH" (full width teal, 40px, 0px radius). Ranks 2 and 3 get "SELECT THIS OPTION" (outlined, same sizing).
+
+If incident is already dispatched, show options in read-only mode with the approved option highlighted in teal-light.
+State D — Dispatched:
+Status banner (teal bg, white text): "DISPATCHED — Option [N] approved by [name] at [time]". Below: "NOTIFICATIONS SENT" section. Each notification as a row: checkmark icon (teal), entity name semibold, action description muted. Rows animate in with Framer Motion spring stagger. A "VIEW TIMELINE" anchor scrolls to the timeline below.
+Section 3 — Timeline:
+Vertical timeline. Dotted left line. Each entry: colored circle dot (color by update_type), timestamp DM Mono 11px, author name 12px semibold, content 13px. Types: status changes (navy), notes (gray), dispatches (teal), system events (muted). At bottom: "Add note" — a simple textarea + submit (POST to /api/incidents/:id/updates). Timeline entries stream in live via SSE.
+Right panel:
+Section 1 — Hospital resources:
+"RESOURCES" header. Each hospital as a row (48px, 1px separator):
+
+Name 13px semibold + short distance DM Mono 12px muted right
+Bed availability bar: full width, 6px tall. Teal fill = available beds. Gray = occupied. Exact counts as "32 / 120" DM Mono 11px right.
+Sub-row: ICU DM Mono 10px + trauma bays DM Mono 10px
+Bars animate on panel mount (width from 0 to final, 400ms stagger 80ms each). "Last updated" timestamp below each bar. Clicking a hospital row highlights it and adds it to the notify list.
+
+Section 2 — Map:
+React-Leaflet, 220px tall, 1px border, 0px radius. attributionControl={false}. Shows:
+
+Incident location: large red marker with pulsing CSS ring animation
+All hospitals: navy square markers, on hover show popup with bed count
+Clicking a hospital marker highlights its resource row above
+
+Section 3 — Volunteers:
+"VOLUNTEERS ON DUTY" header. Count chip (e.g. "14 available"). Filterable by skill (small pill filter). List of volunteers: 36px initial avatar (teal circle, DM Sans 500 white), name 13px, skill tags (up to 2), distance DM Mono 11px, availability dot. When dispatch is approved: assigned volunteers highlight with teal ring animation and show "ASSIGNED" badge.
+
+Portal 2 — Government Command (/gov)
+Requires role gov_admin.
+Top command bar (56px, navy):
+"QuickAid Command" white 16px semibold. Center: 4 stat pills (live from TanStack Query, auto-refetch every 30s): OPEN · DISPATCHED · RESOLVED · VOLUNTEERS. Each pill: rgba(255,255,255,0.12) bg, number 18px semibold white, label 10px rgba(255,255,255,0.6). Numbers animate (count up on mount using useCountUp hook). Right: SSE connection dot, timestamp DM Mono, user chip, logout.
+Three-column body (full viewport height below bar):
+Column 1 (28%) — Incident feed:
+Condensed ticket list (title + severity border + status + elapsed). Scrollable. Clicking a row opens a right-panel detail drawer (same as responder detail but all actions disabled — read-only). Header: "ACTIVE INCIDENTS" mono + count badge.
+Column 2 (44%) — Live map:
+Full column height Leaflet map. Singapore centered [1.3521, 103.8198] zoom 11. Incident markers: colored circles sized by severity (critical=20px, high=14px, medium=10px). On click: popup with ticket number, title, status, elapsed time, "Open in responder →" link. Top-right overlay: "HEATMAP" toggle pill — when on, render a simple density visualization using overlapping low-opacity circles. Live-updating: when SSE fires incident_updated, update marker on map without re-rendering entire map.
+Column 3 (28%) — Broadcast + analytics:
+Top: "BROADCAST" 10px mono header. Form (React Hook Form): textarea (required, max 500 chars, counter), audience segmented control (All Public / Responders / Zone), zone input (shows only when Zone selected). "SEND ALERT" red button. On submit: POST /api/broadcasts, show success toast, add to sent list below. Sent list: last 3 broadcasts, timestamp mono + audience badge + preview.
+Bottom (below divider): "INCIDENT BREAKDOWN" 10px mono header. Recharts BarChart: incident types on x-axis, count on y-axis, teal bars. No grid lines, axis lines only, DM Mono 11px axis labels. Auto-refreshes every 60s.
+
+Portal 3 — Public Citizen (/public)
+Mobile-first (max-width 430px, centered on desktop). Accessible without login — optionally auth for volunteer features.
+Home: Top bar 52px (white, 1px bottom border), "QuickAid" 16px semibold, bell icon with badge count. Active emergency banner (shows if any severity 1 incident exists — fetched from public API endpoint, no auth required). Alert feed: incident cards 56px, 1px bottom border only, 0px radius, severity dot, title, location mono, time ago mono. Tap card: safety info modal for that incident type (static content per type). Fixed bottom: "REPORT INCIDENT" navy button 48px 0px radius.
+Report form (/public/report): Works without login (sets reported_by: null). Same fields as responder new incident form but simplified UI (no lat/lng, no severity — defaults to 2). On submit success: show ticket number, "Save this number to track your report."
+Volunteer signup (/public/volunteer): Creates a volunteer record (requires basic auth — show login/register form inline if not authed). Skills multi-select pills. Availability toggles. On submit: POST /api/volunteers.
+Alert feed (/public/alerts): Paginated list of all broadcasts. Auto-updates via SSE (no auth needed for public broadcast channel — expose a separate unauthenticated SSE endpoint /api/sse/public for broadcast events only).
+
+Production requirements — implement all of these, no exceptions
+Security:
+
+helmet() on all Express responses
+CORS restricted to CORS_ORIGIN env var
+Rate limiting: 100 req/10min general, 10 req/min on /api/ai/*, 5 req/15min on /api/auth/login
+Passwords: bcrypt with BCRYPT_ROUNDS env var (default 12)
+JWT secrets must be checked for minimum length (32 chars) on startup
+SQL: parameterized queries everywhere, zero string interpolation in SQL
+Input validation on every route via express-validator before it touches the DB
+File upload: not implemented yet — return 501 if endpoint is called
+
+Error handling:
+
+All async Express handlers wrapped in a asyncHandler utility (no unhandled promise rejections)
+Frontend: TanStack Query error boundaries per portal section
+Frontend: Global error boundary in App.tsx catches render errors, shows "Something went wrong" with a reload button — never a white screen
+All API errors return { error: { code, message, details? } } — consistent shape always
+404 handler for unknown routes
+
+Loading and empty states:
+
+Every data-fetching component has three states: loading (skeleton), error (message + retry), empty (contextual message + action). No component ever renders nothing while loading.
+Skeleton loaders must match the shape of the real content (not generic spinners)
+
+Accessibility:
+
+All interactive elements reachable by keyboard
+All icon-only buttons have aria-label
+Status badges use role="status" where they update live
+Color is never the only differentiator — severity bars also have aria-labels
+Focus rings visible (customize Tailwind ring to 2px navy)
+
+Performance:
+
+TanStack Query: staleTime: 30_000 on incident list, staleTime: 0 on ticket detail (always fresh)
+Code-split by portal using React lazy + Suspense
+Images: none used (icon-only UI)
+Leaflet loaded lazily (it's heavy)
+
+Environment and deployment:
+Write a complete .env.example with every variable documented. Write a README.md with:
+
+Prerequisites (Node 20+, PostgreSQL 15+)
+Step-by-step local setup (clone → install → env → migrate → seed → run)
+How to create the first gov_admin user
+How to get and set the Anthropic API key
+How to run frontend and backend concurrently (add a root package.json with dev script using concurrently)
+
+
+Implementation order
+Build in exactly this order. Do not skip ahead.
+
+server/ — package.json, tsconfig, env config, db config, logger
+Database migrations (all SQL files)
+Seed data (realistic, all 15 incidents, 6 hospitals, 20 volunteers)
+Auth routes + middleware (login, register, refresh, me)
+Incidents routes (CRUD + approve + status)
+Resources routes (hospitals, volunteers)
+Broadcasts routes
+Claude service (streaming, prompt builder, JSON parser, retry logic)
+AI triage route
+SSE route (pg LISTEN + keepalive + cleanup)
+Error handler + 404 handler
+client/ — package.json, vite config, tailwind config, index.html (Google Fonts)
+Types (shared TypeScript interfaces matching DB schema)
+API client (axios + interceptors)
+Auth store + useAuth hook
+useSSE hook
+useClaudeStream hook
+Shared components (Button, Badge, StatusBadge, SkeletonRow, EmptyState, ErrorState, Toast)
+App.tsx + routing + auth guards + portal code-splitting
+Responder portal — queue → new incident form → ticket detail (full AI triage flow)
+Gov portal — command bar → three columns → broadcast form
+Public portal — home → report form → volunteer signup
+README.md + .env.example
+
+After each major section, verify it compiles before moving on. Do not generate placeholder implementations — every function must do what it says.

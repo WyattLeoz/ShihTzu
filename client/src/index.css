@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper text-ink antialiased;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'DM Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .border-l-red {
+    border-left: 4px solid theme('colors.red.DEFAULT');
+  }
+  .border-l-amber {
+    border-left: 4px solid theme('colors.amber.DEFAULT');
+  }
+  .border-l-teal {
+    border-left: 4px solid theme('colors.teal.DEFAULT');
+  }
+  .border-l-navy {
+    border-left: 4px solid theme('colors.navy.DEFAULT');
+  }
+}
