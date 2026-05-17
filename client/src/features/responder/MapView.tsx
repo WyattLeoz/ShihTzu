@@ -1,327 +1,160 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useIncidents } from '../../api/incidents';
 import { useHospitals, useVolunteers } from '../../api/resources';
 import { IncidentListItem, Hospital, Volunteer } from '../../types';
-import { MapPin, Navigation, AlertTriangle, Activity, UserCheck, Filter, Maximize2, Layers, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
+import {
+  MapPin,
+  Navigation,
+  AlertTriangle,
+  Activity,
+  UserCheck,
+  Filter,
+  Maximize2,
+  Layers,
+  ZoomIn,
+  ZoomOut,
+  RefreshCw,
+  Flame,
+  Droplets,
+  Heart,
+  Car,
+  Building2,
+  Users,
+  HelpCircle,
+  X,
+} from 'lucide-react';
 import { Badge } from '../../components/Badge';
 import { StatusBadge } from '../../components/StatusBadge';
-import { formatIncidentType, formatSeverity, getSeverityBorderColor } from '../../lib/formatters';
+import { formatIncidentType, formatSeverity } from '../../lib/formatters';
+import { IncidentType } from '../../types';
 
 type FilterType = 'all' | 'incidents' | 'hospitals' | 'volunteers';
-type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low';
+type SeverityFilter = 'all' | 1 | 2 | 3;
 
-export function MapView() {
-  console.log('MapView rendered');
-  const [filterType, setFilterType] = useState<FilterType>('all');
-  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [zoom, setZoom] = useState(12);
-  const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 });
-  const [refreshKey, setRefreshKey] = useState(0);
+// ─── Icon + colour per incident type ─────────────────────────────────────────
 
-  const { data: incidentsData, isLoading: incidentsLoading, refetch: refetchIncidents } = useIncidents({ limit: 50, queryKey: ['incidents-map', refreshKey] });
-  const { data: hospitalsData, isLoading: hospitalsLoading, refetch: refetchHospitals } = useHospitals({ queryKey: ['hospitals-map', refreshKey] });
-  const { data: volunteersData, isLoading: volunteersLoading, refetch: refetchVolunteers } = useVolunteers({ queryKey: ['volunteers-map', refreshKey] });
-
-  const incidents = incidentsData?.incidents || [];
-  const hospitals = hospitalsData?.hospitals || [];
-  const volunteers = volunteersData?.volunteers || [];
-
-  const filteredIncidents = incidents.filter(incident => {
-    if (severityFilter === 'all') return true;
-    return incident.severity === severityFilter;
-  });
-
-  const showIncidents = filterType === 'all' || filterType === 'incidents';
-  const showHospitals = filterType === 'all' || filterType === 'hospitals';
-  const showVolunteers = filterType === 'all' || filterType === 'volunteers';
-
-  const handleRefresh = () => {
-    setRefreshKey(prev => prev + 1);
-    refetchIncidents();
-    refetchHospitals();
-    refetchVolunteers();
-  };
-
-  const handleZoomIn = () => setZoom(Math.min(zoom + 1, 18));
-  const handleZoomOut = () => setZoom(Math.max(zoom - 1, 10));
-
-  // Simulated map coordinates for demo (in real app, use real map library)
-  const generateMapPoints = () => {
-    const points: any[] = [];
-
-    if (showIncidents) {
-      filteredIncidents.forEach((incident, index) => {
-        const lat = center.lat + (Math.sin(index * 0.5) * 0.05);
-        const lng = center.lng + (Math.cos(index * 0.5) * 0.05);
-        points.push({
-          type: 'incident',
-          data: incident,
-          lat, lng,
-          x: 50 + (Math.sin(index * 0.5) * 30),
-          y: 50 + (Math.cos(index * 0.5) * 30)
-        });
-      });
-    }
-
-    if (showHospitals) {
-      hospitals.forEach((hospital, index) => {
-        const lat = center.lat + (Math.sin(index * 0.7 + 1) * 0.04);
-        const lng = center.lng + (Math.cos(index * 0.7 + 1) * 0.04);
-        points.push({
-          type: 'hospital',
-          data: hospital,
-          lat, lng,
-          x: 50 + (Math.sin(index * 0.7 + 1) * 25),
-          y: 50 + (Math.cos(index * 0.7 + 1) * 25)
-        });
-      });
-    }
-
-    if (showVolunteers) {
-      volunteers.filter(v => v.isAvailable).forEach((volunteer, index) => {
-        const lat = center.lat + (Math.sin(index * 0.9 + 2) * 0.03);
-        const lng = center.lng + (Math.cos(index * 0.9 + 2) * 0.03);
-        points.push({
-          type: 'volunteer',
-          data: volunteer,
-          lat, lng,
-          x: 50 + (Math.sin(index * 0.9 + 2) * 20),
-          y: 50 + (Math.cos(index * 0.9 + 2) * 20)
-        });
-      });
-    }
-
-    return points;
-  };
-
-  const mapPoints = generateMapPoints();
-
-  return (
-    <div className="h-screen flex flex-col">
-      <div className="text-center py-8">
-        <h1 className="text-2xl font-semibold text-ink mb-2">Incident Map</h1>
-        <p className="text-sm text-ink-muted">If you can see this, the component is rendering!</p>
-      </div>
-      {/* Header */}
-      <div className="bg-white border-b border-paper-border px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-ink mb-1">Incident Map</h1>
-            <p className="text-sm text-ink-muted">Real-time location tracking and resource visualization</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleRefresh}
-              className="flex items-center gap-2 px-4 py-2 bg-navy text-white rounded-sm hover:bg-navy-dark transition-colors"
-            >
-              <RefreshCw size={16} className={incidentsLoading || hospitalsLoading || volunteersLoading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 border border-paper-border rounded-sm hover:bg-paper-hover transition-colors">
-              <Maximize2 size={16} />
-              Fullscreen
-            </button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Filter size={16} className="text-ink-muted" />
-            <span className="text-sm font-medium text-ink">Show:</span>
-            <FilterButton
-              active={filterType === 'all'}
-              onClick={() => setFilterType('all')}
-              label="All"
-            />
-            <FilterButton
-              active={filterType === 'incidents'}
-              onClick={() => setFilterType('incidents')}
-              label="Incidents"
-              count={incidents.length}
-            />
-            <FilterButton
-              active={filterType === 'hospitals'}
-              onClick={() => setFilterType('hospitals')}
-              label="Hospitals"
-              count={hospitals.length}
-            />
-            <FilterButton
-              active={filterType === 'volunteers'}
-              onClick={() => setFilterType('volunteers')}
-              label="Volunteers"
-              count={volunteers.filter(v => v.isAvailable).length}
-            />
-          </div>
-
-          {showIncidents && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-ink">Severity:</span>
-              <SeverityFilter
-                active={severityFilter === 'all'}
-                onClick={() => setSeverityFilter('all')}
-                label="All"
-              />
-              <SeverityFilter
-                active={severityFilter === 'critical'}
-                onClick={() => setSeverityFilter('critical')}
-                label="Critical"
-                color="red"
-              />
-              <SeverityFilter
-                active={severityFilter === 'high'}
-                onClick={() => setSeverityFilter('high')}
-                label="High"
-                color="orange"
-              />
-              <SeverityFilter
-                active={severityFilter === 'medium'}
-                onClick={() => setSeverityFilter('medium')}
-                label="Medium"
-                color="yellow"
-              />
-              <SeverityFilter
-                active={severityFilter === 'low'}
-                onClick={() => setSeverityFilter('low')}
-                label="Low"
-                color="green"
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Map Area */}
-      <div className="flex-1 relative bg-slate-100 overflow-hidden">
-        {/* Simulated Map Background */}
-        <div className="absolute inset-0 opacity-20">
-          <svg width="100%" height="100%">
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#94a3b8" strokeWidth="0.5"/>
-            </pattern>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-          </svg>
-        </div>
-
-        {/* Map Points */}
-        <div className="absolute inset-0">
-          {mapPoints.map((point, index) => (
-            <MapMarker
-              key={index}
-              point={point}
-              onClick={() => setSelectedItem(point)}
-              isSelected={selectedItem === point}
-            />
-          ))}
-        </div>
-
-        {/* Map Controls */}
-        <div className="absolute top-4 right-4 flex flex-col gap-2">
-          <button
-            onClick={handleZoomIn}
-            className="p-2 bg-white border border-paper-border rounded-sm hover:bg-paper-hover shadow-sm"
-          >
-            <ZoomIn size={16} />
-          </button>
-          <button
-            onClick={handleZoomOut}
-            className="p-2 bg-white border border-paper-border rounded-sm hover:bg-paper-hover shadow-sm"
-          >
-            <ZoomOut size={16} />
-          </button>
-          <button
-            onClick={() => {
-              setZoom(12);
-              setCenter({ lat: 40.7128, lng: -74.0060 });
-            }}
-            className="p-2 bg-white border border-paper-border rounded-sm hover:bg-paper-hover shadow-sm"
-            title="Reset View"
-          >
-            <Navigation size={16} />
-          </button>
-        </div>
-
-        {/* Legend */}
-        <div className="absolute bottom-4 left-4 bg-white border border-paper-border rounded-sm p-3 shadow-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <Layers size={16} className="text-ink-muted" />
-            <span className="text-sm font-medium text-ink">Legend</span>
-          </div>
-          <div className="space-y-2 text-xs">
-            <LegendItem icon={<AlertTriangle size={14} className="text-red" />} label="Critical Incident" />
-            <LegendItem icon={<AlertTriangle size={14} className="text-orange" />} label="High Severity" />
-            <LegendItem icon={<AlertTriangle size={14} className="text-yellow" />} label="Medium Severity" />
-            <LegendItem icon={<Activity size={14} className="text-teal" />} label="Hospital" />
-            <LegendItem icon={<UserCheck size={14} className="text-navy" />} label="Available Volunteer" />
-          </div>
-        </div>
-
-        {/* Selected Item Detail */}
-        {selectedItem && (
-          <div className="absolute bottom-4 right-4 bg-white border border-paper-border rounded-sm p-4 shadow-sm max-w-sm">
-            <SelectedItemDetail
-              item={selectedItem}
-              onClose={() => setSelectedItem(null)}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function getIncidentIcon(type: IncidentType, iconClass: string) {
+  switch (type) {
+    case 'fire':           return <Flame      size={15} className={iconClass} />;
+    case 'flood':          return <Droplets   size={15} className={iconClass} />;
+    case 'medical':        return <Heart      size={15} className={iconClass} />;
+    case 'road':           return <Car        size={15} className={iconClass} />;
+    case 'infrastructure': return <Building2  size={15} className={iconClass} />;
+    case 'civil':          return <Users      size={15} className={iconClass} />;
+    default:               return <HelpCircle size={15} className={iconClass} />;
+  }
 }
 
-function MapMarker({ point, onClick, isSelected }: {
+// severity: 1 = Critical, 2 = High, 3 = Medium
+function severityStyles(severity: number) {
+  if (severity === 1)
+    return {
+      ring: 'ring-2 ring-red-500',
+      iconClass: 'text-red-600',
+      bg: 'bg-red-50',
+      dot: 'bg-red-500',
+      label: 'text-red-600',
+    };
+  if (severity === 2)
+    return {
+      ring: 'ring-2 ring-orange-500',
+      iconClass: 'text-orange-600',
+      bg: 'bg-orange-50',
+      dot: 'bg-orange-500',
+      label: 'text-orange-600',
+    };
+  return {
+    ring: 'ring-2 ring-yellow-400',
+    iconClass: 'text-yellow-600',
+    bg: 'bg-yellow-50',
+    dot: 'bg-yellow-400',
+    label: 'text-yellow-600',
+  };
+}
+
+// ─── Map Marker ───────────────────────────────────────────────────────────────
+
+function MapMarker({
+  point,
+  onClick,
+  isSelected,
+}: {
   point: any;
   onClick: () => void;
   isSelected: boolean;
 }) {
-  const getMarkerStyle = () => {
-    switch (point.type) {
-      case 'incident':
-        return {
-          bgColor: point.data.severity === 'critical' ? 'bg-red' :
-                   point.data.severity === 'high' ? 'bg-orange' :
-                   point.data.severity === 'medium' ? 'bg-yellow' : 'bg-green',
-          icon: <AlertTriangle size={16} className="text-white" />
-        };
-      case 'hospital':
-        return {
-          bgColor: 'bg-teal',
-          icon: <Activity size={16} className="text-white" />
-        };
-      case 'volunteer':
-        return {
-          bgColor: 'bg-navy',
-          icon: <UserCheck size={16} className="text-white" />
-        };
-      default:
-        return {
-          bgColor: 'bg-gray',
-          icon: <MapPin size={16} className="text-white" />
-        };
-    }
-  };
+  let markerContent: React.ReactNode;
+  let containerClass: string;
 
-  const { bgColor, icon } = getMarkerStyle();
+  if (point.type === 'incident') {
+    const styles = severityStyles(point.data.severity);
+    markerContent = getIncidentIcon(point.data.type, styles.iconClass);
+    containerClass = `${styles.bg} ${styles.ring} shadow-md`;
+  } else if (point.type === 'hospital') {
+    markerContent = <Activity size={15} className="text-teal-600" />;
+    containerClass = 'bg-teal-50 ring-2 ring-teal-500 shadow-md';
+  } else if (point.type === 'volunteer') {
+    markerContent = <UserCheck size={15} className="text-navy" />;
+    containerClass = 'bg-blue-50 ring-2 ring-navy shadow-md';
+  } else {
+    markerContent = <MapPin size={15} className="text-gray-500" />;
+    containerClass = 'bg-white ring-2 ring-gray-400 shadow-md';
+  }
 
   return (
     <button
       onClick={onClick}
-      className={`absolute transform -translate-x-1/2 -translate-y-1/2 ${bgColor} rounded-full p-2 shadow-lg hover:scale-110 transition-transform ${isSelected ? 'ring-2 ring-navy ring-offset-2' : ''}`}
+      title={
+        point.type === 'incident'
+          ? `${point.data.title} · ${formatSeverity(point.data.severity)}`
+          : point.type === 'hospital'
+          ? point.data.name
+          : point.data.fullName
+      }
+      className={`
+        absolute transform -translate-x-1/2 -translate-y-1/2
+        w-8 h-8 rounded-full flex items-center justify-center
+        hover:scale-125 transition-transform duration-150
+        ${containerClass}
+        ${isSelected ? 'scale-125 ring-offset-2' : ''}
+      `}
       style={{
         left: `${point.x}%`,
-        top: `${point.y}%`,
-        zIndex: isSelected ? 100 : 1
+        top:  `${point.y}%`,
+        zIndex: isSelected ? 100 : 10,
       }}
     >
-      {icon}
-      <div className={`absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 ${bgColor} rotate-45 -z-10`} />
+      {markerContent}
+      {/* pointer tip */}
+      <span
+        className="absolute -bottom-1.5 left-1/2 -translate-x-1/2
+          w-0 h-0 border-l-4 border-r-4 border-t-4
+          border-l-transparent border-r-transparent border-t-current"
+        style={{ color: 'inherit', opacity: 0.6 }}
+      />
     </button>
   );
 }
 
-function FilterButton({ active, onClick, label, count }: {
+// ─── Legend Item ──────────────────────────────────────────────────────────────
+
+function LegendItem({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-ink">
+      {icon}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+// ─── Filter buttons ───────────────────────────────────────────────────────────
+
+function FilterBtn({
+  active,
+  onClick,
+  label,
+  count,
+}: {
   active: boolean;
   onClick: () => void;
   label: string;
@@ -342,68 +175,52 @@ function FilterButton({ active, onClick, label, count }: {
   );
 }
 
-function SeverityFilter({ active, onClick, label, color }: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  color?: string;
+// ─── Selected Item Detail ─────────────────────────────────────────────────────
+
+function SelectedItemDetail({
+  item,
+  onClose,
+}: {
+  item: any;
+  onClose: () => void;
 }) {
-  const colorClass = color === 'red' ? 'text-red' :
-                    color === 'orange' ? 'text-orange' :
-                    color === 'yellow' ? 'text-yellow' :
-                    color === 'green' ? 'text-green' : 'text-ink';
-
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1 text-sm rounded-sm transition-colors ${
-        active
-          ? 'bg-white text-ink border-2 border-current font-medium'
-          : 'text-ink-muted hover:text-ink'
-      } ${colorClass}`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function LegendItem({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 text-ink">
-      {icon}
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function SelectedItemDetail({ item, onClose }: { item: any; onClose: () => void }) {
   return (
     <div>
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
-          {item.type === 'incident' && <AlertTriangle size={16} className="text-red" />}
-          {item.type === 'hospital' && <Activity size={16} className="text-teal" />}
+          {item.type === 'incident' && (
+            <span className={severityStyles(item.data.severity).iconClass}>
+              {getIncidentIcon(
+                item.data.type,
+                severityStyles(item.data.severity).iconClass
+              )}
+            </span>
+          )}
+          {item.type === 'hospital'  && <Activity  size={16} className="text-teal-600" />}
           {item.type === 'volunteer' && <UserCheck size={16} className="text-navy" />}
           <span className="text-sm font-medium text-ink capitalize">{item.type}</span>
         </div>
-        <button
-          onClick={onClose}
-          className="text-ink-muted hover:text-ink"
-        >
-          ×
+        <button onClick={onClose} className="text-ink-muted hover:text-ink">
+          <X size={16} />
         </button>
       </div>
 
       {item.type === 'incident' && (
         <div className="space-y-2">
           <h3 className="font-medium text-ink">{item.data.title}</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={item.data.status} />
-            <Badge variant="info" className="text-xs">{formatIncidentType(item.data.type)}</Badge>
-            <Badge variant="warning" className="text-xs">{formatSeverity(item.data.severity)}</Badge>
+            <Badge variant="info" className="text-xs">
+              {formatIncidentType(item.data.type)}
+            </Badge>
+            <Badge variant="warning" className="text-xs">
+              {formatSeverity(item.data.severity)}
+            </Badge>
           </div>
           <p className="text-sm text-ink-muted">{item.data.locationText}</p>
-          <p className="text-xs text-ink-muted">{new Date(item.data.createdAt).toLocaleString()}</p>
+          <p className="text-xs text-ink-muted">
+            {new Date(item.data.createdAt).toLocaleString()}
+          </p>
         </div>
       )}
 
@@ -413,7 +230,9 @@ function SelectedItemDetail({ item, onClose }: { item: any; onClose: () => void 
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-1">
               <span className="text-ink-muted">Beds:</span>
-              <span className="font-medium">{item.data.availableBeds}/{item.data.totalBeds}</span>
+              <span className="font-medium">
+                {item.data.availableBeds}/{item.data.totalBeds}
+              </span>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-ink-muted">ICU:</span>
@@ -421,24 +240,276 @@ function SelectedItemDetail({ item, onClose }: { item: any; onClose: () => void 
             </div>
           </div>
           <p className="text-sm text-ink-muted">{item.data.address}</p>
-          <p className="text-sm text-ink-muted">{item.data.phone}</p>
         </div>
       )}
 
       {item.type === 'volunteer' && (
         <div className="space-y-2">
           <h3 className="font-medium text-ink">{item.data.fullName}</h3>
-          <div className="flex items-center gap-2">
-            <Badge variant="success" className="text-xs">Available</Badge>
-          </div>
+          <Badge variant="success" className="text-xs">Available</Badge>
           <p className="text-sm text-ink-muted">{item.data.phone}</p>
           <div className="flex flex-wrap gap-1">
             {item.data.skills.map((skill: string) => (
-              <Badge key={skill} variant="info" className="text-xs">{skill}</Badge>
+              <Badge key={skill} variant="info" className="text-xs">
+                {skill}
+              </Badge>
             ))}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Main MapView ─────────────────────────────────────────────────────────────
+
+export function MapView() {
+  const [filterType, setFilterType]       = useState<FilterType>('all');
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all');
+  const [selectedItem, setSelectedItem]   = useState<any>(null);
+  const [zoom, setZoom]                   = useState(12);
+  const [center]                          = useState({ lat: 1.3521, lng: 103.8198 });
+  const [refreshKey, setRefreshKey]       = useState(0);
+
+  const { data: incidentsData,  isLoading: incL, refetch: refI } = useIncidents({ limit: 50 });
+  const { data: hospitalsData,  isLoading: hosL, refetch: refH } = useHospitals();
+  const { data: volunteersData, isLoading: volL, refetch: refV } = useVolunteers();
+
+  const incidents  = incidentsData?.incidents   || [];
+  const hospitals  = hospitalsData?.hospitals   || [];
+  const volunteers = volunteersData?.volunteers || [];
+
+  const filteredIncidents =
+    severityFilter === 'all'
+      ? incidents
+      : incidents.filter((i) => i.severity === severityFilter);
+
+  const showIncidents  = filterType === 'all' || filterType === 'incidents';
+  const showHospitals  = filterType === 'all' || filterType === 'hospitals';
+  const showVolunteers = filterType === 'all' || filterType === 'volunteers';
+
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1);
+    refI(); refH(); refV();
+  };
+
+  // Distribute markers across the viewport
+  const mapPoints = (() => {
+    const pts: any[] = [];
+
+    if (showIncidents) {
+      filteredIncidents.forEach((incident, i) => {
+        pts.push({
+          type: 'incident',
+          data: incident,
+          x: 20 + ((i * 37 + 10) % 65),
+          y: 20 + ((i * 29 + 15) % 60),
+        });
+      });
+    }
+    if (showHospitals) {
+      hospitals.forEach((hospital, i) => {
+        pts.push({
+          type: 'hospital',
+          data: hospital,
+          x: 15 + ((i * 43 + 25) % 70),
+          y: 15 + ((i * 31 + 40) % 65),
+        });
+      });
+    }
+    if (showVolunteers) {
+      volunteers
+        .filter((v) => v.isAvailable)
+        .forEach((volunteer, i) => {
+          pts.push({
+            type: 'volunteer',
+            data: volunteer,
+            x: 10 + ((i * 53 + 5) % 80),
+            y: 10 + ((i * 41 + 20) % 75),
+          });
+        });
+    }
+    return pts;
+  })();
+
+  return (
+    <div className="h-screen flex flex-col">
+      {/* ── Header ── */}
+      <div className="bg-white border-b border-paper-border px-6 py-4 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-ink mb-1">Incident Map</h1>
+            <p className="text-sm text-ink-muted">
+              Real-time location tracking and resource visualisation
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-2 px-4 py-2 bg-navy text-white
+                rounded-sm hover:bg-navy-dark transition-colors"
+            >
+              <RefreshCw
+                size={16}
+                className={incL || hosL || volL ? 'animate-spin' : ''}
+              />
+              Refresh
+            </button>
+            <button
+              className="flex items-center gap-2 px-4 py-2 border border-paper-border
+                rounded-sm hover:bg-paper-hover transition-colors"
+            >
+              <Maximize2 size={16} />
+              Fullscreen
+            </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter size={16} className="text-ink-muted" />
+            <span className="text-sm font-medium text-ink">Show:</span>
+            <FilterBtn active={filterType === 'all'}       onClick={() => setFilterType('all')}       label="All" />
+            <FilterBtn active={filterType === 'incidents'} onClick={() => setFilterType('incidents')} label="Incidents"  count={incidents.length} />
+            <FilterBtn active={filterType === 'hospitals'} onClick={() => setFilterType('hospitals')} label="Hospitals"  count={hospitals.length} />
+            <FilterBtn active={filterType === 'volunteers'} onClick={() => setFilterType('volunteers')} label="Volunteers" count={volunteers.filter((v) => v.isAvailable).length} />
+          </div>
+
+          {showIncidents && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-ink">Severity:</span>
+              {([
+                { val: 'all', label: 'All',      cls: '' },
+                { val: 1,     label: 'Critical', cls: 'text-red-600' },
+                { val: 2,     label: 'High',     cls: 'text-orange-600' },
+                { val: 3,     label: 'Medium',   cls: 'text-yellow-600' },
+              ] as const).map(({ val, label, cls }) => (
+                <button
+                  key={String(val)}
+                  onClick={() => setSeverityFilter(val as SeverityFilter)}
+                  className={`px-3 py-1 text-sm rounded-sm transition-colors font-medium
+                    ${severityFilter === val
+                      ? `bg-white border-2 border-current ${cls || 'border-ink text-ink'}`
+                      : `text-ink-muted hover:text-ink`}
+                  `}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Map Canvas ── */}
+      <div className="flex-1 relative overflow-hidden" style={{ background: '#e8edf3' }}>
+        {/* Grid overlay */}
+        <div className="absolute inset-0 opacity-30">
+          <svg width="100%" height="100%">
+            <defs>
+              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#94a3b8" strokeWidth="0.5" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+          </svg>
+        </div>
+
+        {/* Road-like lines for aesthetics */}
+        <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none">
+          <line x1="0" y1="40%" x2="100%" y2="40%" stroke="#64748b" strokeWidth="3" />
+          <line x1="0" y1="70%" x2="100%" y2="70%" stroke="#64748b" strokeWidth="2" />
+          <line x1="30%" y1="0" x2="30%" y2="100%" stroke="#64748b" strokeWidth="3" />
+          <line x1="65%" y1="0" x2="65%" y2="100%" stroke="#64748b" strokeWidth="2" />
+        </svg>
+
+        {/* Markers */}
+        <div className="absolute inset-0">
+          {mapPoints.map((point, idx) => (
+            <MapMarker
+              key={idx}
+              point={point}
+              onClick={() =>
+                setSelectedItem((prev: any) => (prev === point ? null : point))
+              }
+              isSelected={selectedItem === point}
+            />
+          ))}
+        </div>
+
+        {/* Zoom controls */}
+        <div className="absolute top-4 right-4 flex flex-col gap-1.5">
+          <button
+            onClick={() => setZoom((z) => Math.min(z + 1, 18))}
+            className="p-2 bg-white border border-paper-border rounded-sm
+              hover:bg-paper-hover shadow-sm"
+          >
+            <ZoomIn size={16} />
+          </button>
+          <button
+            onClick={() => setZoom((z) => Math.max(z - 1, 10))}
+            className="p-2 bg-white border border-paper-border rounded-sm
+              hover:bg-paper-hover shadow-sm"
+          >
+            <ZoomOut size={16} />
+          </button>
+          <button
+            onClick={() => setZoom(12)}
+            className="p-2 bg-white border border-paper-border rounded-sm
+              hover:bg-paper-hover shadow-sm"
+            title="Reset zoom"
+          >
+            <Navigation size={16} />
+          </button>
+        </div>
+
+        {/* Legend */}
+        <div className="absolute bottom-4 left-4 bg-white border border-paper-border
+          rounded-sm p-3 shadow-sm space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+            <Layers size={14} className="text-ink-muted" />
+            <span className="text-xs font-semibold text-ink">Legend</span>
+          </div>
+
+          {/* Incident types */}
+          <p className="text-[10px] text-ink-muted uppercase tracking-wider">Incidents</p>
+          <LegendItem icon={<Heart      size={13} className="text-red-600" />}    label="Medical" />
+          <LegendItem icon={<Flame      size={13} className="text-orange-600" />} label="Fire" />
+          <LegendItem icon={<Droplets   size={13} className="text-blue-600" />}   label="Flood" />
+          <LegendItem icon={<Car        size={13} className="text-yellow-600" />} label="Road / Accident" />
+          <LegendItem icon={<Building2  size={13} className="text-purple-600" />} label="Infrastructure" />
+          <LegendItem icon={<Users      size={13} className="text-pink-600" />}   label="Civil" />
+
+          {/* Severity dots */}
+          <p className="text-[10px] text-ink-muted uppercase tracking-wider mt-1">Severity ring</p>
+          <LegendItem icon={<span className="w-3 h-3 rounded-full ring-2 ring-red-500 inline-block" />}    label="Critical" />
+          <LegendItem icon={<span className="w-3 h-3 rounded-full ring-2 ring-orange-500 inline-block" />} label="High" />
+          <LegendItem icon={<span className="w-3 h-3 rounded-full ring-2 ring-yellow-400 inline-block" />} label="Medium" />
+
+          {/* Other layers */}
+          <p className="text-[10px] text-ink-muted uppercase tracking-wider mt-1">Other</p>
+          <LegendItem icon={<Activity  size={13} className="text-teal-600" />} label="Hospital" />
+          <LegendItem icon={<UserCheck size={13} className="text-navy" />}     label="Volunteer (available)" />
+        </div>
+
+        {/* Selected item detail panel */}
+        {selectedItem && (
+          <div className="absolute bottom-4 right-4 bg-white border border-paper-border
+            rounded-sm p-4 shadow-lg w-72">
+            <SelectedItemDetail
+              item={selectedItem}
+              onClose={() => setSelectedItem(null)}
+            />
+          </div>
+        )}
+
+        {/* Zoom badge */}
+        <div className="absolute top-4 left-4 bg-white/80 border border-paper-border
+          rounded-sm px-2 py-1 text-xs font-mono text-ink-muted">
+          Zoom {zoom}
+        </div>
+      </div>
     </div>
   );
 }

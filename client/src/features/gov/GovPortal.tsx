@@ -1,37 +1,50 @@
-import { useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { ReactNode, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useSSE } from '../../hooks/useSSE';
 import { useIncidents } from '../../api/incidents';
 import { useHospitals, useVolunteers } from '../../api/resources';
 import { useBroadcasts } from '../../api/broadcasts';
-import { LogOut, LayoutDashboard, AlertTriangle, Activity, Users, Megaphone, Settings, BarChart3, Map, Shield, RefreshCw } from 'lucide-react';
+import {
+  LogOut,
+  LayoutDashboard,
+  AlertTriangle,
+  Activity,
+  Users,
+  Megaphone,
+  Settings,
+  BarChart3,
+  Shield,
+  RefreshCw,
+} from 'lucide-react';
 import { Badge } from '../../components/Badge';
 import { StatusBadge } from '../../components/StatusBadge';
 import { formatSeverity } from '../../lib/formatters';
 import { IncidentListItem } from '../../types';
 
-export function GovPortal() {
+// ─── Layout Shell ──────────────────────────────────────────────────────────────
+
+interface GovPortalProps {
+  children?: ReactNode;
+}
+
+export function GovPortal({ children }: GovPortalProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
   const { connectionState } = useSSE();
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'incidents' | 'resources' | 'broadcasts' | 'analytics' | 'settings'>('dashboard');
-
   const navItems = [
-    { path: '/gov', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/gov/incidents', label: 'Incidents', icon: AlertTriangle },
-    { path: '/gov/resources', label: 'Resources', icon: Activity },
-    { path: '/gov/broadcasts', label: 'Broadcasts', icon: Megaphone },
-    { path: '/gov/analytics', label: 'Analytics', icon: BarChart3 },
-    { path: '/gov/settings', label: 'Settings', icon: Settings },
+    { path: '/gov',            label: 'Dashboard',   icon: LayoutDashboard },
+    { path: '/gov/incidents',  label: 'Incidents',   icon: AlertTriangle },
+    { path: '/gov/resources',  label: 'Resources',   icon: Activity },
+    { path: '/gov/broadcasts', label: 'Broadcasts',  icon: Megaphone },
+    { path: '/gov/analytics',  label: 'Analytics',   icon: BarChart3 },
+    { path: '/gov/settings',   label: 'Settings',    icon: Settings },
   ];
 
   const isActive = (path: string) => {
-    if (path === '/gov') {
-      return location.pathname === '/gov';
-    }
+    if (path === '/gov') return location.pathname === '/gov';
     return location.pathname.startsWith(path);
   };
 
@@ -75,9 +88,10 @@ export function GovPortal() {
                     onClick={() => navigate(item.path)}
                     className={`
                       w-full flex items-center gap-3 px-6 py-2.5 text-sm font-medium
-                      ${isActive(item.path)
-                        ? 'bg-navy text-white'
-                        : 'text-ink hover:bg-paper-hover'
+                      ${
+                        isActive(item.path)
+                          ? 'bg-navy text-white'
+                          : 'text-ink hover:bg-paper-hover'
                       }
                     `}
                   >
@@ -117,35 +131,49 @@ export function GovPortal() {
         </div>
       </aside>
 
-      {/* Main content */}
+      {/* Main content — renders whatever Routes the parent passes in */}
       <main className="flex-1 overflow-auto bg-paper">
-        <div className="p-4 text-ink-muted text-sm">
-          Debug: {location.pathname}
-        </div>
-        <Outlet />
+        {children}
       </main>
     </div>
   );
 }
 
-// Dashboard View
-export function GovDashboard() {
-  const { data: incidentsData, isLoading: incidentsLoading, refetch: refetchIncidents } = useIncidents({ limit: 100 });
-  const { data: hospitalsData, isLoading: hospitalsLoading, refetch: refetchHospitals } = useHospitals();
-  const { data: volunteersData, isLoading: volunteersLoading, refetch: refetchVolunteers } = useVolunteers();
-  const { data: broadcastsData, isLoading: broadcastsLoading, refetch: refetchBroadcasts } = useBroadcasts({ limit: 50 });
+// ─── Dashboard View ────────────────────────────────────────────────────────────
 
-  const incidents = incidentsData?.incidents || [];
-  const hospitals = hospitalsData?.hospitals || [];
+export function GovDashboard() {
+  const {
+    data: incidentsData,
+    isLoading: incidentsLoading,
+    refetch: refetchIncidents,
+  } = useIncidents({ limit: 100 });
+  const {
+    data: hospitalsData,
+    isLoading: hospitalsLoading,
+    refetch: refetchHospitals,
+  } = useHospitals();
+  const {
+    data: volunteersData,
+    isLoading: volunteersLoading,
+    refetch: refetchVolunteers,
+  } = useVolunteers();
+  const {
+    data: broadcastsData,
+    isLoading: broadcastsLoading,
+    refetch: refetchBroadcasts,
+  } = useBroadcasts({ limit: 50 });
+
+  const incidents  = incidentsData?.incidents   || [];
+  const hospitals  = hospitalsData?.hospitals   || [];
   const volunteers = volunteersData?.volunteers || [];
   const broadcasts = broadcastsData?.broadcasts || [];
 
-  const criticalIncidents = incidents.filter(i => i.severity === 'critical');
-  const highSeverityIncidents = incidents.filter(i => i.severity === 'high');
-  const openIncidents = incidents.filter(i => i.status !== 'resolved');
-  const availableVolunteers = volunteers.filter(v => v.isAvailable);
-  const totalBeds = hospitals.reduce((sum, h) => sum + h.totalBeds, 0);
-  const availableBeds = hospitals.reduce((sum, h) => sum + h.availableBeds, 0);
+  const criticalIncidents    = incidents.filter((i) => i.severity === 3);
+  const highSeverityIncidents = incidents.filter((i) => i.severity === 2);
+  const openIncidents        = incidents.filter((i) => i.status !== 'resolved' && i.status !== 'closed');
+  const availableVolunteers  = volunteers.filter((v) => v.isAvailable);
+  const totalBeds            = hospitals.reduce((s, h) => s + h.totalBeds,     0);
+  const availableBeds        = hospitals.reduce((s, h) => s + h.availableBeds, 0);
 
   const handleRefresh = () => {
     refetchIncidents();
@@ -153,6 +181,8 @@ export function GovDashboard() {
     refetchVolunteers();
     refetchBroadcasts();
   };
+
+  const isRefreshing = incidentsLoading || hospitalsLoading || volunteersLoading || broadcastsLoading;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -165,9 +195,10 @@ export function GovDashboard() {
           </div>
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-navy text-white rounded-sm hover:bg-navy-dark transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-navy text-white rounded-sm
+              hover:bg-navy-dark transition-colors"
           >
-            <RefreshCw size={16} className={incidentsLoading || hospitalsLoading || volunteersLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
             Refresh
           </button>
         </div>
@@ -181,7 +212,8 @@ export function GovDashboard() {
             <div>
               <p className="font-medium text-red">Active Emergency Response</p>
               <p className="text-sm text-red-dark">
-                {criticalIncidents.length} critical and {highSeverityIncidents.length} high-severity incidents require immediate attention
+                {criticalIncidents.length} critical and {highSeverityIncidents.length}{' '}
+                high-severity incidents require immediate attention.
               </p>
             </div>
           </div>
@@ -203,7 +235,7 @@ export function GovDashboard() {
           total={totalBeds}
           icon={<Activity size={20} className="text-teal" />}
           unit="beds"
-          trend={availableBeds / totalBeds < 0.2 ? 'critical' : 'normal'}
+          trend={totalBeds > 0 && availableBeds / totalBeds < 0.2 ? 'critical' : 'normal'}
         />
         <StatCard
           title="Available Volunteers"
@@ -213,8 +245,8 @@ export function GovDashboard() {
           trend="normal"
         />
         <StatCard
-          title="Active Broadcasts"
-          value={broadcasts.filter(b => new Date(broadcasts[0]?.createdAt || 0) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length}
+          title="Recent Broadcasts"
+          value={broadcasts.slice(0, 5).length}
           total={broadcasts.length}
           icon={<Megaphone size={20} className="text-teal" />}
           trend="normal"
@@ -238,22 +270,18 @@ export function GovDashboard() {
                   </div>
                   <div className="flex items-center gap-3 text-sm text-ink-muted">
                     <span>{incident.locationText}</span>
-                    <span>•</span>
+                    <span>·</span>
                     <span>{formatSeverity(incident.severity)}</span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-ink-muted">
-                    {new Date(incident.createdAt).toLocaleTimeString()}
-                  </div>
+                <div className="text-xs text-ink-muted">
+                  {new Date(incident.createdAt).toLocaleTimeString()}
                 </div>
               </div>
             </div>
           ))}
           {incidents.length === 0 && (
-            <div className="px-4 py-8 text-center text-ink-muted">
-              No recent incidents
-            </div>
+            <div className="px-4 py-8 text-center text-ink-muted">No recent incidents</div>
           )}
         </div>
       </div>
@@ -270,22 +298,24 @@ export function GovDashboard() {
           </div>
           <div className="p-4 space-y-3">
             {hospitals.slice(0, 4).map((hospital) => {
-              const bedPercentage = (hospital.availableBeds / hospital.totalBeds) * 100;
-              const statusColor = bedPercentage > 30 ? 'bg-teal' : bedPercentage > 10 ? 'bg-amber' : 'bg-red';
-
+              const pct = hospital.totalBeds > 0
+                ? (hospital.availableBeds / hospital.totalBeds) * 100
+                : 0;
+              const bar =
+                pct > 30 ? 'bg-teal' : pct > 10 ? 'bg-amber' : 'bg-red';
               return (
-                <div key={hospital.id} className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-ink">{hospital.name}</span>
-                      <span className="text-sm text-ink-muted">{hospital.availableBeds}/{hospital.totalBeds}</span>
-                    </div>
-                    <div className="h-2 bg-paper-border rounded-full overflow-hidden">
-                      <div
-                        className={`h-full ${statusColor} rounded-full transition-all`}
-                        style={{ width: `${bedPercentage}%` }}
-                      />
-                    </div>
+                <div key={hospital.id}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-ink">{hospital.name}</span>
+                    <span className="text-sm text-ink-muted">
+                      {hospital.availableBeds}/{hospital.totalBeds}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-paper-border rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${bar} rounded-full transition-all`}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
                 </div>
               );
@@ -306,8 +336,12 @@ export function GovDashboard() {
               <div key={broadcast.id} className="px-4 py-3">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="font-medium text-ink text-sm mb-1">{broadcast.title}</h3>
-                    <p className="text-sm text-ink-muted line-clamp-2">{broadcast.message}</p>
+                    <h3 className="font-medium text-ink text-sm mb-1">
+                      {broadcast.title}
+                    </h3>
+                    <p className="text-sm text-ink-muted line-clamp-2">
+                      {broadcast.message}
+                    </p>
                   </div>
                   <Badge variant="info" className="text-xs ml-2">
                     {broadcast.audience}
@@ -327,7 +361,16 @@ export function GovDashboard() {
   );
 }
 
-function StatCard({ title, value, total, icon, unit, trend }: {
+// ─── Stat Card ─────────────────────────────────────────────────────────────────
+
+function StatCard({
+  title,
+  value,
+  total,
+  icon,
+  unit,
+  trend,
+}: {
   title: string;
   value: number;
   total: number;
@@ -335,8 +378,8 @@ function StatCard({ title, value, total, icon, unit, trend }: {
   unit?: string;
   trend: 'normal' | 'critical';
 }) {
-  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-  const trendColor = trend === 'critical' ? 'bg-red' : 'bg-teal';
+  const percentage   = total > 0 ? Math.round((value / total) * 100) : 0;
+  const dotColor     = trend === 'critical' ? 'bg-red' : 'bg-teal';
 
   return (
     <div className="bg-white border border-paper-border rounded-sm p-4">
@@ -345,7 +388,7 @@ function StatCard({ title, value, total, icon, unit, trend }: {
           {icon}
           <span className="text-sm font-medium text-ink">{title}</span>
         </div>
-        <div className={`w-2 h-2 rounded-full ${trendColor}`} />
+        <div className={`w-2 h-2 rounded-full ${dotColor}`} />
       </div>
       <div className="text-2xl font-bold text-ink mb-1">
         {value}
