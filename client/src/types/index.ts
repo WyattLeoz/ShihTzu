@@ -1,4 +1,4 @@
-// User types
+// ─── User ─────────────────────────────────────────────────────────────────────
 export interface User {
   id: string;
   email: string;
@@ -16,12 +16,33 @@ export interface AuthResponse {
   user: User;
 }
 
-// Incident types
-export type IncidentType = 'medical' | 'flood' | 'fire' | 'road' | 'infrastructure' | 'civil' | 'other';
-export type IncidentStatus = 'open' | 'triaging' | 'dispatched' | 'on_scene' | 'resolved' | 'closed';
+// ─── Incident ─────────────────────────────────────────────────────────────────
+export type IncidentType =
+  | 'medical'
+  | 'flood'
+  | 'fire'
+  | 'road'
+  | 'infrastructure'
+  | 'civil'
+  | 'other';
+
+export type IncidentStatus =
+  | 'open'
+  | 'triaging'
+  | 'dispatched'
+  | 'on_scene'
+  | 'resolved'
+  | 'closed';
+
 export type IncidentSeverity = 1 | 2 | 3;
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
-export type UpdateType = 'status_change' | 'field_update' | 'note' | 'dispatch' | 'notification' | 'system';
+export type UpdateType =
+  | 'status_change'
+  | 'field_update'
+  | 'note'
+  | 'dispatch'
+  | 'notification'
+  | 'system';
 
 export interface Incident {
   id: string;
@@ -34,17 +55,8 @@ export interface Incident {
   locationLng?: number;
   severity: IncidentSeverity;
   status: IncidentStatus;
-  reportedBy: {
-    id: string;
-    email: string;
-    name: string;
-  } | null;
-  assignedTo: {
-    id: string;
-    email: string;
-    name: string;
-    unit: string;
-  } | null;
+  reportedBy: { id: string; email: string; name: string } | null;
+  assignedTo: { id: string; email: string; name: string; unit: string } | null;
   aiTriageData: AIResponse | null;
   approvedOption: number | null;
   approvedBy: string | null;
@@ -65,6 +77,7 @@ export interface IncidentListItem {
   locationLng?: number;
   severity: IncidentSeverity;
   status: IncidentStatus;
+  assignedTo: { id: string; name: string; unit: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,10 +89,7 @@ export interface IncidentUpdate {
   content: string;
   metadata: any;
   createdAt: string;
-  author: {
-    name: string;
-    role: string;
-  } | null;
+  author: { name: string; role: string } | null;
 }
 
 export interface AIOption {
@@ -96,12 +106,13 @@ export interface AIResponse {
   options: AIOption[];
 }
 
-// Resource types
+// ─── Hospital ─────────────────────────────────────────────────────────────────
 export interface Hospital {
   id: string;
   name: string;
   shortName: string;
   address: string;
+  phone?: string;
   lat: number;
   lng: number;
   totalBeds: number;
@@ -111,6 +122,17 @@ export interface Hospital {
   lastUpdatedAt: string;
   createdAt: string;
 }
+
+// ─── Volunteer ────────────────────────────────────────────────────────────────
+export type VolunteerSkill =
+  | 'first_aid'
+  | 'cpr'
+  | 'medical_support'
+  | 'vehicle'
+  | 'heavy_lifting'
+  | 'transport'
+  | 'translation'
+  | 'psychological_support';
 
 export interface Volunteer {
   id: string;
@@ -125,17 +147,40 @@ export interface Volunteer {
   updatedAt: string;
 }
 
-export type VolunteerSkill =
-  | 'first_aid'
-  | 'cpr'
+// ─── Volunteer Tasks (community task board) ───────────────────────────────────
+export type VolunteerTaskType =
+  | 'food_distribution'
+  | 'shelter_assistance'
   | 'medical_support'
-  | 'vehicle'
-  | 'heavy_lifting'
-  | 'transport'
+  | 'logistics'
   | 'translation'
-  | 'psychological_support';
+  | 'community_outreach'
+  | 'blood_donation'
+  | 'technical';
 
-// Broadcast types
+export type TaskUrgency = 'low' | 'medium' | 'high' | 'critical';
+export type TaskStatus  = 'open' | 'filling' | 'full' | 'completed';
+
+export interface VolunteerTask {
+  id: string;
+  title: string;
+  description: string;
+  organization: string;
+  orgType: 'government' | 'ngo' | 'healthcare' | 'community';
+  taskType: VolunteerTaskType;
+  location: string;
+  date: string;
+  timeSlot: string;
+  slotsTotal: number;
+  slotsFilled: number;
+  skillsRequired: string[];
+  urgency: TaskUrgency;
+  status: TaskStatus;
+  incidentId?: string;
+  createdAt: string;
+}
+
+// ─── Broadcast ────────────────────────────────────────────────────────────────
 export type BroadcastAudience = 'all' | 'responders' | 'zone';
 
 export interface Broadcast {
@@ -144,16 +189,12 @@ export interface Broadcast {
   message: string;
   audience: BroadcastAudience;
   zone?: string;
-  sentBy: {
-    id: string;
-    name: string;
-    role: string;
-  };
+  sentBy: { id: string; name: string; role: string };
   incidentId?: string;
   createdAt: string;
 }
 
-// API response types
+// ─── API helpers ──────────────────────────────────────────────────────────────
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -162,15 +203,15 @@ export interface PaginatedResponse<T> {
 }
 
 export interface ApiError {
-  error: {
-    code: string;
-    message: string;
-    details?: any;
-  };
+  error: { code: string; message: string; details?: any };
 }
 
-// SSE event types
-export type SSEEventType = 'connected' | 'incident_updated' | 'timeline_added' | 'broadcast_sent';
+// ─── SSE ──────────────────────────────────────────────────────────────────────
+export type SSEEventType =
+  | 'connected'
+  | 'incident_updated'
+  | 'timeline_added'
+  | 'broadcast_sent';
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -178,17 +219,6 @@ export interface SSEEvent {
   connectionId?: string;
 }
 
-export interface AITextEvent {
-  type: 'text';
-  content: string;
-}
-
-export interface AICompleteEvent {
-  type: 'complete';
-  options: AIOption[];
-}
-
-export interface AIErrorEvent {
-  type: 'error';
-  error: string;
-}
+export interface AITextEvent     { type: 'text';     content: string }
+export interface AICompleteEvent { type: 'complete'; options: AIOption[] }
+export interface AIErrorEvent    { type: 'error';    error: string }

@@ -481,6 +481,9 @@ for the citizens i want a section where they can see available like (open) volun
 of a volunteer button at the top
 
 
+
+
+[ask claudeAi to continue last prompt - in MERN stack with typescript chatlog history]
 for the citizens i want a section where they can see available like (open) volunteering tasks they can own-self volunteer if they wish to, instead of a volunteer button at the top, and i feel like the ui is not so correct for production ready, the topic is Topic: Fast Response
 
 Problem Statement:
@@ -492,3 +495,17 @@ Elaboration:
 When crises like pandemics or floods happen, quick and clear information can save lives. What if we could track cases, hospital beds, or volunteer efforts all in one place? Your challenge is to design an app that brings together data from many sources to help leaders, responders, and communities make quick, confident decisions when it matters most.,
 
 i thinking for the incident can also like ai triage suggest but what u think is better, the incident become open and whichever agency free will take or the person assign the incident to the appropriate responder then they have to take, if so give me full code for coresponding for production grade real world use
+
+
+
+
+
+
+
+
+
+
+
+
+
+make aws architecture.md with archiecture diagram md for me to see how setup full diagram and flow
