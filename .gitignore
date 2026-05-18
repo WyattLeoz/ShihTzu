@@ -45,3 +45,7 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Development notes and prompts
+prompt.txt
+*.prompt
