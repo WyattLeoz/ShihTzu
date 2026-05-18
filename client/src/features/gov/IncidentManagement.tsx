@@ -1,119 +1,137 @@
 import { useState, useMemo } from 'react';
-import { useIncidents, useUpdateIncidentStatus, useAssignIncident, useApproveIncident } from '../../api/incidents';
-import { formatIncidentType, formatSeverity, getSeverityBorderColor } from '../../lib/formatters';
+import { useNavigate } from 'react-router-dom';
+import { useIncidents, useUpdateIncidentStatus } from '../../api/incidents';
+import { formatIncidentType, formatSeverity } from '../../lib/formatters';
 import { StatusBadge } from '../../components/StatusBadge';
-import { Badge } from '../../components/Badge';
 import { IncidentListItem, IncidentStatus, IncidentType, IncidentSeverity } from '../../types';
 import {
   Search, Filter, Download, AlertCircle, CheckCircle, Clock,
-  ChevronRight, X, MapPin, Calendar, User, Shield, Activity,
-  Zap, AlertTriangle, Radio, FileText, TrendingUp, Users,
-  RefreshCw, ChevronDown, ArrowUpDown, Eye, Siren,
-  Flame, Droplets, Heart, Car, Building2, Flag, HelpCircle,
-  Phone, Send, ThumbsUp, BarChart3, Timer,
+  ChevronRight, X, MapPin, User, Shield, Activity, Zap,
+  AlertTriangle, Radio, FileText, TrendingUp, Users, RefreshCw,
+  ArrowUpDown, Siren, Phone, Send, Flame, Droplets, Heart,
+  Car, Building2, Flag, HelpCircle, ExternalLink, BarChart3,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SortKey = 'created_at' | 'severity' | 'status' | 'type';
 type SortDir = 'asc' | 'desc';
+type TabId   = 'all' | 'needs_review' | 'active' | 'resolved';
 
-interface FilterState {
-  search: string;
-  status: IncidentStatus | 'all';
-  severity: IncidentSeverity | 'all';
-  type: IncidentType | 'all';
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Shared constants ─────────────────────────────────────────────────────────
 
 const STATUS_FLOW: IncidentStatus[] = [
   'open', 'triaging', 'dispatched', 'on_scene', 'resolved',
 ];
 
-const STATUS_CONFIG: Record<IncidentStatus, { label: string; color: string; bg: string; border: string }> = {
+const STATUS_CFG: Record<IncidentStatus, { label: string; color: string; bg: string; border: string }> = {
   open:       { label: 'Open',       color: 'text-ink',        bg: 'bg-paper',        border: 'border-paper-border' },
-  triaging:   { label: 'Triaging',   color: 'text-amber-dark', bg: 'bg-amber-light',  border: 'border-amber' },
-  dispatched: { label: 'Dispatched', color: 'text-teal-dark',  bg: 'bg-teal-light',   border: 'border-teal' },
-  on_scene:   { label: 'On Scene',   color: 'text-navy-mid',   bg: 'bg-navy-light',   border: 'border-navy-border' },
-  resolved:   { label: 'Resolved',   color: 'text-teal-dark',  bg: 'bg-teal-light',   border: 'border-teal' },
+  triaging:   { label: 'Triaging',   color: 'text-amber-dark', bg: 'bg-amber-light',  border: 'border-amber'        },
+  dispatched: { label: 'Dispatched', color: 'text-teal-dark',  bg: 'bg-teal-light',   border: 'border-teal'         },
+  on_scene:   { label: 'On Scene',   color: 'text-navy-mid',   bg: 'bg-navy-light',   border: 'border-navy-border'  },
+  resolved:   { label: 'Resolved',   color: 'text-teal-dark',  bg: 'bg-teal-light',   border: 'border-teal'         },
   closed:     { label: 'Closed',     color: 'text-ink-muted',  bg: 'bg-paper-border', border: 'border-paper-border' },
 };
 
-const SEVERITY_CONFIG: Record<number, { label: string; color: string; bg: string; border: string; dot: string }> = {
-  1: { label: 'Critical', color: 'text-red-dark',   bg: 'bg-red-light',    border: 'border-red',          dot: 'bg-red' },
-  2: { label: 'High',     color: 'text-amber-dark', bg: 'bg-amber-light',  border: 'border-amber',        dot: 'bg-amber' },
-  3: { label: 'Medium',   color: 'text-teal-dark',  bg: 'bg-teal-light',   border: 'border-teal',         dot: 'bg-teal' },
+const SEV_CFG: Record<number, { label: string; color: string; bg: string; border: string; dot: string; bar: string }> = {
+  1: { label: 'Critical', color: 'text-red-dark',   bg: 'bg-red-light',   border: 'border-red',         dot: 'bg-red',   bar: 'bg-red'   },
+  2: { label: 'High',     color: 'text-amber-dark', bg: 'bg-amber-light', border: 'border-amber',       dot: 'bg-amber', bar: 'bg-amber' },
+  3: { label: 'Medium',   color: 'text-teal-dark',  bg: 'bg-teal-light',  border: 'border-teal',        dot: 'bg-teal',  bar: 'bg-teal'  },
 };
 
-const TYPE_ICONS: Record<IncidentType, { icon: React.ReactNode; color: string }> = {
-  fire:           { icon: <Flame      size={14} />, color: 'text-orange-600' },
-  flood:          { icon: <Droplets   size={14} />, color: 'text-blue-600'   },
-  medical:        { icon: <Heart      size={14} />, color: 'text-red-600'    },
-  road:           { icon: <Car        size={14} />, color: 'text-yellow-600' },
-  infrastructure: { icon: <Building2  size={14} />, color: 'text-purple-600' },
-  civil:          { icon: <Flag       size={14} />, color: 'text-navy'       },
-  other:          { icon: <HelpCircle size={14} />, color: 'text-ink-muted'  },
+const TYPE_ICON: Record<IncidentType, { icon: React.ReactNode; color: string }> = {
+  fire:           { icon: <Flame      size={13} />, color: 'text-orange-600' },
+  flood:          { icon: <Droplets   size={13} />, color: 'text-blue-600'   },
+  medical:        { icon: <Heart      size={13} />, color: 'text-red-600'    },
+  road:           { icon: <Car        size={13} />, color: 'text-yellow-600' },
+  infrastructure: { icon: <Building2  size={13} />, color: 'text-purple-600' },
+  civil:          { icon: <Flag       size={13} />, color: 'text-navy'       },
+  other:          { icon: <HelpCircle size={13} />, color: 'text-ink-muted'  },
 };
 
 // Agencies to notify per incident type
-const INCIDENT_AGENCIES: Record<IncidentType, { name: string; contact: string; role: string }[]> = {
+const INCIDENT_AGENCIES: Record<IncidentType, { name: string; role: string; contact: string }[]> = {
   flood:          [
-    { name: 'SCDF',         contact: '1777',          role: 'Flood Response' },
-    { name: 'PUB',          contact: '1800 284 6600',  role: 'Drainage Control' },
-    { name: 'PA',           contact: '6225 5322',      role: 'Evacuation Centre' },
-    { name: 'SPF',          contact: '999',            role: 'Traffic & Cordon' },
-    { name: 'Town Council', contact: 'Varies',         role: 'Resident Comms' },
+    { name: 'SCDF',         role: 'Flood Response',   contact: '995'            },
+    { name: 'PUB',          role: 'Drainage Control', contact: '1800 284 6600'  },
+    { name: 'PA',           role: 'Evac Centre',      contact: '6225 5322'      },
+    { name: 'SPF',          role: 'Cordon & Traffic', contact: '999'            },
+    { name: 'Town Council', role: 'Resident Comms',   contact: 'Varies'         },
   ],
   medical:        [
-    { name: 'SCDF EMS',     contact: '995',            role: 'Ambulance Dispatch' },
-    { name: 'MOH',          contact: '1800 333 9999',  role: 'Hospital Coordination' },
-    { name: 'SPF',          contact: '999',            role: 'Scene Security' },
+    { name: 'SCDF EMS', role: 'Ambulance Dispatch',   contact: '995'            },
+    { name: 'MOH',      role: 'Hospital Coord',        contact: '1800 333 9999' },
+    { name: 'SPF',      role: 'Scene Security',        contact: '999'           },
   ],
   fire:           [
-    { name: 'SCDF',         contact: '995',            role: 'Fire & Rescue' },
-    { name: 'SPF',          contact: '999',            role: 'Road Closure' },
-    { name: 'SP Group',     contact: '1800 752 1234',  role: 'Utilities Safety' },
-    { name: 'LTA',          contact: '1800 2255 582',  role: 'Traffic Diversion' },
+    { name: 'SCDF',     role: 'Fire & Rescue',         contact: '995'            },
+    { name: 'SPF',      role: 'Road Closure',          contact: '999'            },
+    { name: 'SP Group', role: 'Utilities Safety',      contact: '1800 752 1234'  },
+    { name: 'LTA',      role: 'Traffic Diversion',     contact: '1800 2255 582'  },
   ],
   road:           [
-    { name: 'Traffic Police', contact: '6547 0000',   role: 'Accident Investigation' },
-    { name: 'SCDF EMS',     contact: '995',            role: 'Medical Response' },
-    { name: 'LTA',          contact: '1800 2255 582',  role: 'Road Advisory' },
+    { name: 'Traffic Police', role: 'Investigation',   contact: '6547 0000'     },
+    { name: 'SCDF EMS',       role: 'Medical Response', contact: '995'          },
+    { name: 'LTA',            role: 'Road Advisory',   contact: '1800 2255 582' },
   ],
   infrastructure: [
-    { name: 'SCDF',         contact: '1777',           role: 'Structural Assessment' },
-    { name: 'BCA',          contact: '1800 342 5222',  role: 'Building Safety' },
-    { name: 'SP Group',     contact: '1800 752 1234',  role: 'Utilities' },
-    { name: 'SPF',          contact: '999',            role: 'Perimeter Cordon' },
+    { name: 'SCDF',     role: 'Structural Assessment', contact: '1777'          },
+    { name: 'BCA',      role: 'Building Safety',       contact: '1800 342 5222' },
+    { name: 'SP Group', role: 'Utilities',             contact: '1800 752 1234' },
+    { name: 'SPF',      role: 'Perimeter Cordon',      contact: '999'           },
   ],
   civil:          [
-    { name: 'SPF',          contact: '999',            role: 'Law & Order' },
-    { name: 'SCDF EMS',     contact: '995',            role: 'Medical Standby' },
-    { name: 'ISD',          contact: '1800 278 7000',  role: 'Security Intelligence' },
+    { name: 'SPF',      role: 'Law & Order',           contact: '999'           },
+    { name: 'SCDF EMS', role: 'Medical Standby',       contact: '995'           },
   ],
   other:          [
-    { name: 'SCDF',         contact: '1777',           role: 'First Response' },
-    { name: 'SPF',          contact: '999',            role: 'Support' },
+    { name: 'SCDF', role: 'First Response',            contact: '1777'          },
+    { name: 'SPF',  role: 'Support',                   contact: '999'           },
   ],
 };
 
-// AI triage action options per type
-const AI_ACTIONS: Record<IncidentType, string[]> = {
-  flood:          ['Deploy SCDF pump trucks + rescue boat', 'Activate nearest evacuation centre', 'Issue zone-level public advisory'],
-  medical:        ['Dispatch ALS ambulance to scene', 'Pre-alert receiving hospital A&E', 'Request bystander CPR support via 995'],
-  fire:           ['Dispatch 2× fire engines + ladder platform', 'Evacuate building + establish cordon', 'Alert SP Group if gas lines at risk'],
-  road:           ['Deploy Traffic Police to scene', 'Activate SCDF EMS if casualties', 'Issue LTA One Motoring advisory'],
-  infrastructure: ['Alert SCDF + BCA for structural assessment', 'Evacuate 50m perimeter', 'Isolate affected utilities'],
-  civil:          ['Deploy SPF rapid response', 'Seal inner + outer cordon', 'Activate medical standby'],
-  other:          ['Deploy first response team', 'Establish incident command post', 'Assess and escalate if needed'],
+// AI recommendations per type (top 3 actions)
+const AI_ACTIONS: Record<IncidentType, { action: string; confidence: number }[]> = {
+  flood:          [
+    { action: 'Deploy SCDF pump trucks + rescue boat to site',  confidence: 92 },
+    { action: 'Activate nearest CC as evacuation centre',        confidence: 85 },
+    { action: 'Issue public advisory via gov.sg / 938Live',      confidence: 78 },
+  ],
+  medical:        [
+    { action: 'Dispatch ALS ambulance to scene immediately',     confidence: 95 },
+    { action: 'Pre-alert nearest A&E for incoming patient',      confidence: 88 },
+    { action: 'Request myResponder bystander CPR support',       confidence: 62 },
+  ],
+  fire:           [
+    { action: 'Deploy 2× fire engines + ladder platform',        confidence: 94 },
+    { action: 'Evacuate building + establish 50m cordon',        confidence: 89 },
+    { action: 'Alert SP Group for utilities shut-off',           confidence: 71 },
+  ],
+  road:           [
+    { action: 'Deploy Traffic Police to accident scene',         confidence: 91 },
+    { action: 'Activate SCDF EMS if casualties reported',        confidence: 84 },
+    { action: 'Issue LTA One Motoring diversion alert',          confidence: 77 },
+  ],
+  infrastructure: [
+    { action: 'Deploy SCDF for structural risk assessment',      confidence: 90 },
+    { action: 'Evacuate building + establish safe perimeter',    confidence: 88 },
+    { action: 'Notify BCA for certified inspection',             confidence: 82 },
+  ],
+  civil:          [
+    { action: 'Deploy SPF rapid response unit',                  confidence: 93 },
+    { action: 'Seal inner + outer cordon around site',           confidence: 86 },
+    { action: 'Place SCDF EMS on standby at perimeter',          confidence: 70 },
+  ],
+  other:          [
+    { action: 'Deploy first response assessment team',           confidence: 75 },
+    { action: 'Establish incident command post at scene',        confidence: 68 },
+  ],
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const m = Math.floor(diff / 60000);
+function timeAgo(d: string) {
+  const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
   if (m < 1) return 'just now';
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
@@ -121,545 +139,596 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function fmtDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString('en-SG', {
+function fmtDate(d: string) {
+  return new Date(d).toLocaleString('en-SG', {
     day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
 }
 
-// ─── Incident Detail Panel ────────────────────────────────────────────────────
-
-function IncidentDetailPanel({
-  incident,
-  onClose,
-}: {
-  incident: IncidentListItem;
-  onClose: () => void;
-}) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'agencies' | 'ai' | 'timeline'>('overview');
-  const [contactedAgencies, setContactedAgencies] = useState<Set<string>>(new Set());
-  const [aiTriaged, setAiTriaged] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [note, setNote] = useState('');
-  const [notes, setNotes] = useState<{ text: string; time: string }[]>([]);
-  const [statusLoading, setStatusLoading] = useState(false);
-
-  const { mutate: updateStatus } = useUpdateIncidentStatus(incident.id);
-
-  const sevcfg = SEVERITY_CONFIG[incident.severity] || SEVERITY_CONFIG[3];
-  const typecfg = TYPE_ICONS[incident.type] || TYPE_ICONS.other;
-  const agencies = INCIDENT_AGENCIES[incident.type] || [];
-  const aiActions = AI_ACTIONS[incident.type] || [];
-  const curStatusIdx = STATUS_FLOW.indexOf(incident.status);
-  const nextStatus = STATUS_FLOW[curStatusIdx + 1];
-
-  const handleAdvanceStatus = () => {
-    if (!nextStatus) return;
-    setStatusLoading(true);
-    updateStatus(nextStatus, {
-      onSuccess: () => setStatusLoading(false),
-      onError: () => setStatusLoading(false),
-    });
-  };
-
-  const handleRunAI = () => {
-    setAiLoading(true);
-    setTimeout(() => { setAiLoading(false); setAiTriaged(true); }, 2000);
-  };
-
-  const handleAddNote = () => {
-    if (!note.trim()) return;
-    setNotes(prev => [...prev, { text: note, time: new Date().toISOString() }]);
-    setNote('');
-  };
-
-  const TABS = [
-    { id: 'overview' as const,  label: 'Overview',  icon: <Eye size={13} /> },
-    { id: 'agencies' as const,  label: 'Agencies',  icon: <Radio size={13} /> },
-    { id: 'ai'       as const,  label: 'AI Triage', icon: <Zap size={13} /> },
-    { id: 'timeline' as const,  label: 'Timeline',  icon: <FileText size={13} /> },
-  ];
-
-  return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header */}
-      <div className={`px-5 py-4 border-b border-paper-border ${
-        incident.severity === 1 ? 'bg-red-light' :
-        incident.severity === 2 ? 'bg-amber-light' : 'bg-white'
-      }`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="font-mono text-xs font-bold text-ink-muted">{incident.ticketNumber}</span>
-              <StatusBadge status={incident.status} />
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${sevcfg.bg} ${sevcfg.color} ${sevcfg.border}`}>
-                SEV {incident.severity} · {sevcfg.label}
-              </span>
-            </div>
-            <h2 className="font-bold text-ink text-base leading-snug">{incident.title}</h2>
-            <div className="flex items-center gap-3 mt-1.5 text-xs text-ink-muted flex-wrap">
-              <span className="flex items-center gap-1"><MapPin size={11} />{incident.locationText}</span>
-              <span className="flex items-center gap-1"><Clock size={11} />{timeAgo(incident.createdAt)}</span>
-              <span className={`flex items-center gap-1 ${typecfg.color}`}>
-                {typecfg.icon} {formatIncidentType(incident.type)}
-              </span>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink flex-shrink-0 mt-0.5">
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Status stepper */}
-        <div className="mt-4 flex items-center gap-1 overflow-x-auto pb-1">
-          {STATUS_FLOW.map((s, i) => {
-            const done = i < curStatusIdx;
-            const active = i === curStatusIdx;
-            const scfg = STATUS_CONFIG[s];
-            return (
-              <div key={s} className="flex items-center gap-1 flex-shrink-0">
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-semibold border transition-all ${
-                  active  ? `${scfg.bg} ${scfg.color} ${scfg.border} ring-1 ring-offset-1 ring-current` :
-                  done    ? 'bg-teal-light text-teal-dark border-teal' :
-                            'bg-white text-ink-muted border-paper-border opacity-50'
-                }`}>
-                  {done && <CheckCircle size={10} />}
-                  {active && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
-                  {scfg.label}
-                </div>
-                {i < STATUS_FLOW.length - 1 && (
-                  <ChevronRight size={10} className="text-paper-border flex-shrink-0" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Advance status button */}
-        {nextStatus && incident.status !== 'resolved' && incident.status !== 'closed' && (
-          <button
-            onClick={handleAdvanceStatus}
-            disabled={statusLoading}
-            className="mt-3 w-full flex items-center justify-center gap-2 py-2 bg-navy text-white text-xs font-semibold rounded-sm hover:bg-navy-dark disabled:opacity-50 transition-colors"
-          >
-            {statusLoading
-              ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Updating…</>
-              : <><ChevronRight size={13} /> Advance to {STATUS_CONFIG[nextStatus].label}</>}
-          </button>
-        )}
-        {incident.status === 'resolved' && (
-          <div className="mt-3 flex items-center justify-center gap-2 py-2 bg-teal-light border border-teal rounded-sm text-xs font-semibold text-teal-dark">
-            <CheckCircle size={13} /> Incident Resolved
-          </div>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-paper-border">
-        <div className="flex">
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors border-b-2 ${
-                activeTab === tab.id
-                  ? 'border-navy text-navy bg-white'
-                  : 'border-transparent text-ink-muted hover:text-ink'
-              }`}>
-              {tab.icon}{tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
-
-        {/* ── Overview tab ── */}
-        {activeTab === 'overview' && (
-          <div className="p-5 space-y-5">
-            {/* Key facts grid */}
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Ticket',       value: incident.ticketNumber,               icon: <FileText size={12} /> },
-                { label: 'Type',         value: formatIncidentType(incident.type),   icon: typecfg.icon },
-                { label: 'Severity',     value: `${sevcfg.label} (Level ${incident.severity})`, icon: <AlertTriangle size={12} /> },
-                { label: 'Status',       value: STATUS_CONFIG[incident.status].label, icon: <Activity size={12} /> },
-                { label: 'Reported',     value: fmtDate(incident.createdAt),         icon: <Calendar size={12} /> },
-                { label: 'Assigned To',  value: incident.assignedTo?.name || 'Unassigned', icon: <User size={12} /> },
-              ].map(f => (
-                <div key={f.label} className="bg-paper rounded-sm p-3">
-                  <div className="flex items-center gap-1.5 text-[10px] text-ink-muted mb-1">{f.icon}{f.label}</div>
-                  <p className="text-xs font-semibold text-ink leading-snug">{f.value}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Description */}
-            <div>
-              <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2">Description</p>
-              <p className="text-sm text-ink leading-relaxed bg-paper rounded-sm p-3">
-                {incident.description || 'No description provided.'}
-              </p>
-            </div>
-
-            {/* Response indicators */}
-            <div>
-              <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2">Response Indicators</p>
-              <div className="space-y-2">
-                {[
-                  {
-                    label: 'Response time target',
-                    value: incident.severity === 1 ? '< 5 min' : incident.severity === 2 ? '< 10 min' : '< 20 min',
-                    ok: true,
-                  },
-                  {
-                    label: 'Elapsed since report',
-                    value: timeAgo(incident.createdAt),
-                    ok: incident.status !== 'open',
-                  },
-                  {
-                    label: 'Resource assignment',
-                    value: incident.assignedTo ? `${incident.assignedTo.name} (${incident.assignedTo.unit})` : 'Not yet assigned',
-                    ok: !!incident.assignedTo,
-                  },
-                ].map(ind => (
-                  <div key={ind.label} className="flex items-center justify-between text-xs bg-paper p-2.5 rounded-sm">
-                    <span className="text-ink-muted">{ind.label}</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`font-semibold ${ind.ok ? 'text-teal-dark' : 'text-red-dark'}`}>{ind.value}</span>
-                      {ind.ok
-                        ? <CheckCircle size={11} className="text-teal" />
-                        : <AlertCircle size={11} className="text-red" />}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Field notes */}
-            <div>
-              <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2">Field Notes</p>
-              {notes.length > 0 && (
-                <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
-                  {notes.map((n, i) => (
-                    <div key={i} className="bg-navy-light border border-navy-border rounded-sm p-2.5">
-                      <p className="text-xs text-ink">{n.text}</p>
-                      <p className="text-[10px] text-ink-muted mt-1">{fmtDate(n.time)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddNote()}
-                  placeholder="Add field note or update…"
-                  className="flex-1 px-3 py-2 border border-paper-border rounded-sm text-xs focus:outline-none focus:ring-2 focus:ring-navy"
-                />
-                <button onClick={handleAddNote} disabled={!note.trim()}
-                  className="px-3 py-2 bg-navy text-white rounded-sm text-xs hover:bg-navy-dark disabled:opacity-40">
-                  <Send size={12} />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Agencies tab ── */}
-        {activeTab === 'agencies' && (
-          <div className="p-5 space-y-4">
-            <div className="bg-amber-light border border-amber rounded-sm p-3 text-xs text-amber-dark">
-              <strong>Coordination required:</strong> Contact all relevant agencies below. Mark each as alerted once communication is established.
-            </div>
-
-            <div className="space-y-3">
-              {agencies.map(ag => {
-                const contacted = contactedAgencies.has(ag.name);
-                return (
-                  <div key={ag.name} className={`border rounded-sm overflow-hidden transition-all ${
-                    contacted ? 'border-teal bg-teal-light/30' : 'border-paper-border bg-white'
-                  }`}>
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0 ${
-                          contacted ? 'bg-teal text-white' : 'bg-navy text-white'
-                        }`}>
-                          <Shield size={14} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-ink">{ag.name}</p>
-                            {contacted && (
-                              <span className="text-[10px] font-bold text-teal-dark bg-teal-light px-1.5 py-0.5 rounded">
-                                ✓ Alerted
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-ink-muted">{ag.role}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <a href={`tel:${ag.contact.replace(/\s/g, '')}`}
-                          className="flex items-center gap-1 px-2.5 py-1.5 border border-paper-border rounded-sm text-xs text-ink hover:bg-paper-hover">
-                          <Phone size={11} /> {ag.contact}
-                        </a>
-                        <button
-                          onClick={() => setContactedAgencies(prev => {
-                            const next = new Set(prev);
-                            next.has(ag.name) ? next.delete(ag.name) : next.add(ag.name);
-                            return next;
-                          })}
-                          className={`px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors ${
-                            contacted
-                              ? 'bg-paper border border-paper-border text-ink-muted hover:bg-paper-hover'
-                              : 'bg-teal text-white hover:bg-teal-dark'
-                          }`}>
-                          {contacted ? 'Undo' : 'Mark Alerted'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Summary */}
-            <div className="bg-paper border border-paper-border rounded-sm p-3 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-ink-muted">Agencies alerted</span>
-                <span className={`font-bold ${
-                  contactedAgencies.size === agencies.length ? 'text-teal-dark' : 'text-amber-dark'
-                }`}>
-                  {contactedAgencies.size}/{agencies.length}
-                </span>
-              </div>
-              <div className="h-1.5 bg-paper-border rounded-full mt-2 overflow-hidden">
-                <div
-                  className="h-full bg-teal rounded-full transition-all"
-                  style={{ width: `${agencies.length > 0 ? (contactedAgencies.size / agencies.length) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── AI Triage tab ── */}
-        {activeTab === 'ai' && (
-          <div className="p-5 space-y-4">
-            {!aiTriaged ? (
-              <>
-                <div className="bg-paper border border-paper-border rounded-sm p-4 text-center">
-                  <Zap size={28} className="text-navy mx-auto mb-2 opacity-40" />
-                  <p className="text-sm font-semibold text-ink mb-1">AI Triage Not Yet Run</p>
-                  <p className="text-xs text-ink-muted mb-4">
-                    Run AI triage to get recommended actions, resource requirements, and estimated response time based on this incident's data.
-                  </p>
-                  <button onClick={handleRunAI} disabled={aiLoading}
-                    className="flex items-center justify-center gap-2 px-5 py-2.5 bg-navy text-white text-sm font-semibold rounded-sm hover:bg-navy-dark disabled:opacity-50 transition-colors mx-auto">
-                    {aiLoading
-                      ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Analysing…</>
-                      : <><Zap size={14} /> Run AI Triage</>}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 bg-teal-light border border-teal rounded-sm px-3 py-2.5">
-                  <CheckCircle size={14} className="text-teal flex-shrink-0" />
-                  <p className="text-xs font-semibold text-teal-dark">AI Triage Complete — {incident.severity === 1 ? '91' : incident.severity === 2 ? '78' : '65'}% confidence</p>
-                  <button onClick={() => setAiTriaged(false)} className="ml-auto text-teal-dark opacity-50 hover:opacity-100"><X size={13} /></button>
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2">Recommended Actions</p>
-                  <div className="space-y-2">
-                    {aiActions.map((action, i) => (
-                      <div key={i} className="flex items-start gap-3 bg-white border border-paper-border rounded-sm p-3">
-                        <div className="w-6 h-6 bg-navy text-white text-xs font-bold rounded flex items-center justify-center flex-shrink-0 mt-0.5">
-                          {i + 1}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm text-ink">{action}</p>
-                          <div className="mt-1.5 h-1 bg-paper-border rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-teal rounded-full"
-                              style={{ width: `${95 - i * 12}%` }}
-                            />
-                          </div>
-                          <p className="text-[10px] text-ink-muted mt-0.5">{95 - i * 12}% confidence</p>
-                        </div>
-                        {i === 0 && (
-                          <button className="flex items-center gap-1 px-2.5 py-1.5 bg-teal text-white text-[10px] font-semibold rounded hover:bg-teal-dark flex-shrink-0">
-                            <ThumbsUp size={10} /> Approve
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2">Resource Requirements</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: 'Est. Response Time', value: incident.severity === 1 ? '4–6 min' : incident.severity === 2 ? '8–12 min' : '15–20 min' },
-                      { label: 'Personnel Needed', value: incident.severity === 1 ? '8–12' : incident.severity === 2 ? '4–6' : '2–4' },
-                      { label: 'Vehicles Required', value: incident.severity === 1 ? '3–4' : incident.severity === 2 ? '2' : '1' },
-                      { label: 'Est. Resolution', value: incident.severity === 1 ? '2–4 hrs' : incident.severity === 2 ? '1–2 hrs' : '30–60 min' },
-                    ].map(r => (
-                      <div key={r.label} className="bg-paper rounded-sm p-2.5 text-center">
-                        <p className="text-[10px] text-ink-muted mb-0.5">{r.label}</p>
-                        <p className="text-sm font-bold text-ink">{r.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-ink-muted bg-paper-hover rounded-sm p-2.5 leading-relaxed">
-                  AI recommendations are based on historical incident data and current resource availability. Final operational decisions remain with the duty commander.
-                </p>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── Timeline tab ── */}
-        {activeTab === 'timeline' && (
-          <div className="p-5">
-            <div className="space-y-3">
-              {/* Auto-generated timeline entries */}
-              {[
-                { time: incident.createdAt, label: 'Incident reported', sub: 'Ticket created and entered into system', type: 'create' },
-                ...(incident.status !== 'open' ? [{ time: incident.updatedAt, label: `Status → ${STATUS_CONFIG[incident.status].label}`, sub: 'Status updated by operator', type: 'status' }] : []),
-                ...(incident.assignedTo ? [{ time: incident.updatedAt, label: `Assigned to ${incident.assignedTo.name}`, sub: incident.assignedTo.unit, type: 'assign' }] : []),
-                ...notes.map(n => ({ time: n.time, label: 'Field note added', sub: n.text, type: 'note' })),
-              ]
-                .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-                .map((entry, i, arr) => (
-                  <div key={i} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div className={`w-3 h-3 rounded-full flex-shrink-0 mt-0.5 ${
-                        entry.type === 'create' ? 'bg-navy' :
-                        entry.type === 'status' ? 'bg-teal' :
-                        entry.type === 'assign' ? 'bg-amber' : 'bg-ink-muted'
-                      }`} />
-                      {i < arr.length - 1 && <div className="w-px flex-1 bg-paper-border mt-1" />}
-                    </div>
-                    <div className="flex-1 pb-3">
-                      <p className="text-xs font-semibold text-ink">{entry.label}</p>
-                      <p className="text-[11px] text-ink-muted mt-0.5">{entry.sub}</p>
-                      <p className="text-[10px] text-ink-muted mt-1 font-mono">{fmtDate(entry.time)}</p>
-                    </div>
-                  </div>
-                ))}
-
-              {notes.length === 0 && incident.status === 'open' && !incident.assignedTo && (
-                <div className="text-center py-6 text-ink-muted">
-                  <Clock size={24} className="mx-auto mb-2 opacity-30" />
-                  <p className="text-xs">Only the creation event so far. Timeline updates as the incident progresses.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function isOverdue(i: IncidentListItem) {
+  const thr = i.severity === 1 ? 5 : i.severity === 2 ? 10 : 20;
+  return i.status === 'open' && !i.assignedTo &&
+    Math.floor((Date.now() - new Date(i.createdAt).getTime()) / 60000) > thr;
 }
 
-// ─── Stats Bar ─────────────────────────────────────────────────────────────────
+// ─── Stats Bar ────────────────────────────────────────────────────────────────
 
 function StatsBar({ incidents }: { incidents: IncidentListItem[] }) {
-  const open     = incidents.filter(i => i.status === 'open').length;
-  const critical = incidents.filter(i => i.severity === 1).length;
-  const active   = incidents.filter(i => !['resolved', 'closed'].includes(i.status)).length;
-  const resolved = incidents.filter(i => ['resolved', 'closed'].includes(i.status)).length;
-  const resRate  = incidents.length > 0 ? Math.round((resolved / incidents.length) * 100) : 0;
+  const unassigned = incidents.filter(i => i.status === 'open' && !i.assignedTo).length;
+  const critical   = incidents.filter(i => i.severity === 1 && !['resolved', 'closed'].includes(i.status)).length;
+  const active     = incidents.filter(i => !['resolved', 'closed'].includes(i.status)).length;
+  const resolved   = incidents.filter(i => ['resolved', 'closed'].includes(i.status)).length;
+  const resRate    = incidents.length > 0 ? Math.round((resolved / incidents.length) * 100) : 0;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
       {[
-        { label: 'Total Incidents',  value: incidents.length, sub: 'all time',                icon: <BarChart3   size={16} className="text-navy"       />, alert: false },
-        { label: 'Active',           value: active,           sub: 'requiring attention',      icon: <Activity    size={16} className="text-amber"      />, alert: active > 10 },
-        { label: 'Unassigned Open',  value: open,             sub: 'pending assignment',        icon: <AlertCircle size={16} className="text-red"        />, alert: open > 0 },
-        { label: 'Critical (Sev 1)', value: critical,         sub: 'highest priority',          icon: <Siren       size={16} className="text-red"        />, alert: critical > 0 },
-        { label: 'Resolution Rate',  value: `${resRate}%`,   sub: `${resolved} resolved`,     icon: <TrendingUp  size={16} className="text-teal"       />, alert: false },
+        { label: 'Needs Review',  value: unassigned,        sub: 'unassigned open',    icon: <AlertCircle size={16} className="text-red"   />, alert: unassigned > 0 },
+        { label: 'Total Active',  value: active,            sub: 'not yet resolved',   icon: <Activity    size={16} className="text-amber" />, alert: active > 10    },
+        { label: 'Critical',      value: critical,          sub: 'severity 1',         icon: <Siren       size={16} className="text-red"   />, alert: critical > 0   },
+        { label: 'Total',         value: incidents.length,  sub: 'all incidents',      icon: <BarChart3   size={16} className="text-navy"  />, alert: false          },
+        { label: 'Resolution',    value: `${resRate}%`,     sub: `${resolved} done`,   icon: <TrendingUp  size={16} className="text-teal"  />, alert: false          },
       ].map(s => (
         <div key={s.label} className={`bg-white border rounded-sm p-4 ${s.alert ? 'border-red' : 'border-paper-border'}`}>
-          <div className="flex items-start justify-between mb-1">
+          <div className="flex items-start justify-between mb-1.5">
             {s.icon}
             {s.alert && <div className="w-2 h-2 bg-red rounded-full animate-pulse" />}
           </div>
-          <div className="text-2xl font-bold text-ink mt-1">{s.value}</div>
+          <div className="text-2xl font-bold text-ink">{s.value}</div>
           <div className="text-[10px] text-ink-muted mt-0.5">{s.label}</div>
+          <div className="text-[9px] text-ink-muted">{s.sub}</div>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Incident Row ─────────────────────────────────────────────────────────────
+// ─── Incident Row (list item) ─────────────────────────────────────────────────
 
 function IncidentRow({
-  incident,
-  selected,
-  onClick,
+  incident, selected, onClick,
 }: {
-  incident: IncidentListItem;
-  selected: boolean;
-  onClick: () => void;
+  incident: IncidentListItem; selected: boolean; onClick: () => void;
 }) {
-  const sevcfg  = SEVERITY_CONFIG[incident.severity] || SEVERITY_CONFIG[3];
-  const typecfg = TYPE_ICONS[incident.type] || TYPE_ICONS.other;
-  const isOld   = incident.status === 'open' && Date.now() - new Date(incident.createdAt).getTime() > 15 * 60 * 1000;
+  const sev     = SEV_CFG[incident.severity] || SEV_CFG[3];
+  const typ     = TYPE_ICON[incident.type]   || TYPE_ICON.other;
+  const overdue = isOverdue(incident);
 
   return (
     <div
       onClick={onClick}
-      className={`px-4 py-3.5 cursor-pointer border-l-4 transition-all ${
-        selected ? 'bg-navy-light border-l-navy' : 'hover:bg-paper-hover border-l-transparent'
-      } ${getSeverityBorderColor(incident.severity)}`}
-      style={{ borderLeftWidth: selected ? '3px' : '3px' }}
+      className={`px-4 py-3.5 cursor-pointer transition-all border-l-4 ${
+        incident.severity === 1 ? 'border-l-red' :
+        incident.severity === 2 ? 'border-l-amber' : 'border-l-teal'
+      } ${selected ? 'bg-navy-light' : 'hover:bg-paper-hover'}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5 ${sev.dot}`} />
         <div className="flex-1 min-w-0">
-          {/* Top row */}
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="font-mono text-xs text-ink-muted">{incident.ticketNumber}</span>
-            <span className={`flex items-center gap-1 text-[10px] font-semibold ${typecfg.color}`}>
-              {typecfg.icon} {formatIncidentType(incident.type)}
+            <span className="font-mono text-[10px] text-ink-muted font-bold">{incident.ticketNumber}</span>
+            <span className={`flex items-center gap-1 text-[10px] font-semibold ${typ.color}`}>
+              {typ.icon}{formatIncidentType(incident.type)}
             </span>
             <StatusBadge status={incident.status} />
-            {incident.severity === 1 && (
-              <span className="flex items-center gap-1 text-[10px] font-bold text-red bg-red-light px-1.5 py-0.5 rounded">
-                <Siren size={9} /> CRITICAL
+            {!incident.assignedTo && incident.status === 'open' && (
+              <span className="text-[9px] font-bold text-red bg-red-light px-1.5 py-0.5 rounded border border-red">
+                UNASSIGNED
               </span>
             )}
           </div>
-          {/* Title */}
           <p className={`text-sm font-semibold truncate ${selected ? 'text-navy' : 'text-ink'}`}>
             {incident.title}
           </p>
-          {/* Meta */}
-          <div className="flex items-center gap-3 mt-1 text-xs text-ink-muted">
-            <span className="flex items-center gap-1"><MapPin size={10} />{incident.locationText}</span>
-            <span className={`flex items-center gap-1 ${isOld ? 'text-red font-semibold' : ''}`}>
-              <Clock size={10} />{timeAgo(incident.createdAt)}
+          <div className="flex items-center gap-3 mt-1 text-xs text-ink-muted flex-wrap">
+            <span className="flex items-center gap-1"><MapPin size={9} />{incident.locationText}</span>
+            <span className={`flex items-center gap-1 ${overdue ? 'text-red font-semibold' : ''}`}>
+              <Clock size={9} />{timeAgo(incident.createdAt)}{overdue ? ' ⚠' : ''}
             </span>
+            {incident.assignedTo && (
+              <span className="flex items-center gap-1 text-teal-dark font-medium">
+                <User size={9} />{incident.assignedTo.name}
+              </span>
+            )}
           </div>
         </div>
-        {/* Severity dot */}
-        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1 ${sevcfg.dot}`} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Detail Panel ─────────────────────────────────────────────────────────────
+
+function DetailPanel({
+  incident,
+  onClose,
+  navigate,
+}: {
+  incident: IncidentListItem;
+  onClose: () => void;
+  navigate: (path: string) => void;
+}) {
+  type PanelTab = 'overview' | 'agencies' | 'ai' | 'timeline';
+
+  const [tab,      setTab]      = useState<PanelTab>('overview');
+  const [alerted,  setAlerted]  = useState<Set<string>>(new Set());
+  const [checked,  setChecked]  = useState<Record<string, boolean>>({});
+  const [note,     setNote]     = useState('');
+  const [notes,    setNotes]    = useState<{ text: string; time: string }[]>([]);
+  const [aiRan,    setAiRan]    = useState(false);
+  const [aiLoading, setAiLoad]  = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  const { mutate: updateStatus } = useUpdateIncidentStatus(incident.id);
+
+  const sev      = SEV_CFG[incident.severity] || SEV_CFG[3];
+  const typ      = TYPE_ICON[incident.type]   || TYPE_ICON.other;
+  const agencies = INCIDENT_AGENCIES[incident.type] || [];
+  const aiRecs   = AI_ACTIONS[incident.type] || [];
+  const curIdx   = STATUS_FLOW.indexOf(incident.status);
+  const nextStatus = STATUS_FLOW[curIdx + 1];
+  const overdue  = isOverdue(incident);
+
+  const handleAdvance = () => {
+    if (!nextStatus) return;
+    setStatusLoading(true);
+    updateStatus(nextStatus, {
+      onSuccess: () => setStatusLoading(false),
+      onError:   () => setStatusLoading(false),
+    });
+  };
+
+  const TABS: { id: PanelTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'overview',  label: 'Overview',  icon: <FileText size={11} /> },
+    { id: 'agencies',  label: 'Agencies',  icon: <Radio    size={11} /> },
+    { id: 'ai',        label: 'AI Triage', icon: <Zap      size={11} /> },
+    { id: 'timeline',  label: 'Timeline',  icon: <Activity size={11} /> },
+  ];
+
+  // Timeline entries (derived from what we know)
+  const timelineEntries = [
+    { dot: 'bg-navy',    label: 'Incident reported',               sub: 'Via Public Portal — citizen report', time: incident.createdAt },
+    ...(incident.assignedTo ? [
+      { dot: 'bg-teal',  label: `Claimed by ${incident.assignedTo.name}`, sub: incident.assignedTo.unit, time: incident.updatedAt },
+    ] : []),
+    ...(incident.status !== 'open' ? [
+      { dot: 'bg-amber', label: `Status → ${STATUS_CFG[incident.status].label}`, sub: 'Status updated', time: incident.updatedAt },
+    ] : []),
+    ...notes.map(n => ({
+      dot: 'bg-ink-muted', label: 'Field note added',
+      sub: n.text.slice(0, 60) + (n.text.length > 60 ? '…' : ''), time: n.time,
+    })),
+  ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+  return (
+    <div className="flex flex-col h-full bg-white">
+
+      {/* ── Header ── */}
+      <div className={`px-5 py-4 border-b border-paper-border flex-shrink-0 ${
+        incident.severity === 1 ? 'bg-red-light' :
+        incident.severity === 2 ? 'bg-amber-light' : 'bg-white'
+      }`}>
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="font-mono text-xs font-bold text-ink-muted">{incident.ticketNumber}</span>
+              <StatusBadge status={incident.status} />
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${sev.bg} ${sev.color} ${sev.border}`}>
+                SEV {incident.severity} · {sev.label}
+              </span>
+              {overdue && (
+                <span className="text-[9px] font-bold text-red animate-pulse">⚠ OVERDUE</span>
+              )}
+            </div>
+            <h2 className="font-bold text-ink text-sm leading-snug">{incident.title}</h2>
+            <div className="flex items-center gap-2 mt-1 text-[11px] text-ink-muted flex-wrap">
+              <span className="flex items-center gap-1"><MapPin size={9} />{incident.locationText}</span>
+              <span className="flex items-center gap-1"><Clock  size={9} />{timeAgo(incident.createdAt)}</span>
+              <span className={`flex items-center gap-1 font-medium ${typ.color}`}>
+                {typ.icon}{formatIncidentType(incident.type)}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink flex-shrink-0 mt-0.5">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Compact ownership strip */}
+        <div className="flex items-center gap-1.5 text-[10px] text-ink-muted mb-3 flex-wrap">
+          <span className="flex items-center gap-1 px-2 py-0.5 bg-white border border-paper-border rounded">
+            <FileText size={9} /> Public Report
+          </span>
+          <ChevronRight size={9} />
+          {incident.assignedTo ? (
+            <span className="flex items-center gap-1 px-2 py-0.5 bg-teal-light border border-teal rounded text-teal-dark font-semibold">
+              <User size={9} /> {incident.assignedTo.name}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 px-2 py-0.5 bg-red-light border border-red rounded text-red-dark font-semibold animate-pulse">
+              <AlertCircle size={9} /> Needs a Reviewer
+            </span>
+          )}
+          {incident.assignedTo && (
+            <>
+              <ChevronRight size={9} />
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-navy-light border border-navy-border rounded text-navy-mid font-semibold">
+                <Shield size={9} /> {incident.assignedTo.unit}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Status stepper */}
+        <div className="flex items-center gap-1 overflow-x-auto mb-3">
+          {STATUS_FLOW.map((s, i) => {
+            const done = i < curIdx; const active = i === curIdx;
+            return (
+              <div key={s} className="flex items-center gap-1 flex-shrink-0">
+                <span className={`text-[9px] font-bold px-2 py-1 rounded border ${
+                  active ? `${STATUS_CFG[s].bg} ${STATUS_CFG[s].color} ${STATUS_CFG[s].border} ring-1 ring-offset-1 ring-current` :
+                  done   ? 'bg-teal-light text-teal-dark border-teal' :
+                           'bg-paper text-ink-muted border-paper-border opacity-40'
+                }`}>
+                  {done && '✓ '}{STATUS_CFG[s].label}
+                </span>
+                {i < STATUS_FLOW.length - 1 && <ChevronRight size={9} className="text-paper-border" />}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          {nextStatus && !['resolved', 'closed'].includes(incident.status) && (
+            <button
+              onClick={handleAdvance}
+              disabled={statusLoading}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-navy text-white text-xs font-bold rounded-sm hover:bg-navy-dark disabled:opacity-50"
+            >
+              {statusLoading
+                ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <><ChevronRight size={11} /> → {STATUS_CFG[nextStatus].label}</>}
+            </button>
+          )}
+          <button
+            onClick={() => navigate(`/responder/ticket/${incident.id}`)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 border border-navy text-navy text-xs font-bold rounded-sm hover:bg-navy-light flex-shrink-0"
+          >
+            <ExternalLink size={11} /> Full Detail
+          </button>
+        </div>
       </div>
 
-      {/* Assignment bar */}
-      {incident.assignedTo && (
-        <div className="mt-2 flex items-center gap-1.5 text-[10px] text-ink-muted">
-          <User size={9} /> {incident.assignedTo.name} · {incident.assignedTo.unit}
-        </div>
-      )}
+      {/* ── Tabs ── */}
+      <div className="flex border-b border-paper-border flex-shrink-0">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-[10px] font-semibold border-b-2 transition-colors ${
+              tab === t.id ? 'border-navy text-navy' : 'border-transparent text-ink-muted hover:text-ink'
+            }`}>
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab content ── */}
+      <div className="flex-1 overflow-y-auto">
+
+        {/* Overview */}
+        {tab === 'overview' && (
+          <div className="p-4 space-y-4">
+
+            {/* Key facts grid */}
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { l: 'Ticket',     v: incident.ticketNumber },
+                { l: 'Type',       v: formatIncidentType(incident.type) },
+                { l: 'Severity',   v: `${sev.label} (Level ${incident.severity})` },
+                { l: 'Status',     v: STATUS_CFG[incident.status].label },
+                { l: 'Location',   v: incident.locationText },
+                { l: 'Reported',   v: fmtDate(incident.createdAt) },
+              ].map(f => (
+                <div key={f.l} className="bg-paper rounded-sm p-2.5">
+                  <p className="text-[9px] text-ink-muted mb-0.5">{f.l}</p>
+                  <p className="text-xs font-semibold text-ink leading-snug">{f.v}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Description */}
+            <div>
+              <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-1.5">Description</p>
+              <p className="text-xs text-ink leading-relaxed bg-paper rounded-sm p-3 border border-paper-border">
+                {incident.description || 'No description provided.'}
+              </p>
+            </div>
+
+            {/* Ownership chain — detailed */}
+            <div>
+              <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Users size={10} /> Incident Ownership
+              </p>
+              <div className="space-y-1.5">
+                {[
+                  {
+                    n: '①', label: 'Reported By',
+                    val: 'Public / Citizen',
+                    sub: `Submitted via Public Portal · ${timeAgo(incident.createdAt)}`,
+                    done: true,
+                  },
+                  {
+                    n: '②', label: 'Reviewed By',
+                    val: incident.assignedTo?.name || 'Awaiting a responder',
+                    sub: incident.assignedTo ? 'Claimed and reviewing' : 'Not yet claimed — visible in Queue',
+                    done: !!incident.assignedTo,
+                  },
+                  {
+                    n: '③', label: 'Assigned To',
+                    val: incident.assignedTo
+                      ? `${incident.assignedTo.name} · ${incident.assignedTo.unit}`
+                      : 'Not yet assigned',
+                    sub: incident.assignedTo ? 'Active responder on this incident' : 'Assign via Responder Portal',
+                    done: !!incident.assignedTo,
+                  },
+                ].map(s => (
+                  <div key={s.n} className={`flex items-center gap-3 px-3 py-2.5 rounded-sm border transition-all ${
+                    s.done ? 'bg-navy-light border-navy-border' : 'bg-paper border-paper-border opacity-60'
+                  }`}>
+                    <div className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 ${
+                      s.done ? 'bg-navy text-white' : 'bg-paper-border text-ink-muted'
+                    }`}>{s.n}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[9px] text-ink-muted">{s.label}</p>
+                      <p className="text-xs font-semibold text-ink truncate">{s.val}</p>
+                      <p className="text-[9px] text-ink-muted truncate">{s.sub}</p>
+                    </div>
+                    {s.done && <CheckCircle size={12} className="text-teal flex-shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Response health */}
+            <div>
+              <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2">Response Health</p>
+              <div className="space-y-1.5">
+                {[
+                  {
+                    l: 'Response target',
+                    v: incident.severity === 1 ? '< 5 min' : incident.severity === 2 ? '< 10 min' : '< 20 min',
+                    ok: true,
+                  },
+                  {
+                    l: 'Time elapsed',
+                    v: timeAgo(incident.createdAt),
+                    ok: incident.status !== 'open' || !!incident.assignedTo,
+                  },
+                  {
+                    l: 'Assignment status',
+                    v: incident.assignedTo ? `${incident.assignedTo.name}` : 'Unassigned',
+                    ok: !!incident.assignedTo,
+                  },
+                ].map(r => (
+                  <div key={r.l} className="flex items-center justify-between bg-paper rounded-sm px-3 py-2 text-xs">
+                    <span className="text-ink-muted">{r.l}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-semibold text-xs ${r.ok ? 'text-teal-dark' : 'text-red-dark'}`}>{r.v}</span>
+                      {r.ok
+                        ? <CheckCircle size={10} className="text-teal" />
+                        : <AlertCircle size={10} className="text-red" />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-2">Field Notes</p>
+              {notes.map((n, i) => (
+                <div key={i} className="text-xs text-ink bg-paper rounded px-3 py-2 mb-1.5 border border-paper-border">
+                  {n.text}
+                  <p className="text-[9px] text-ink-muted mt-0.5 font-mono">{fmtDate(n.time)}</p>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && note.trim()) {
+                      setNotes(p => [...p, { text: note, time: new Date().toISOString() }]);
+                      setNote('');
+                    }
+                  }}
+                  placeholder="Add field note…"
+                  className="flex-1 px-2.5 py-1.5 border border-paper-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-navy"
+                />
+                <button
+                  onClick={() => {
+                    if (note.trim()) {
+                      setNotes(p => [...p, { text: note, time: new Date().toISOString() }]);
+                      setNote('');
+                    }
+                  }}
+                  className="px-2.5 py-1.5 bg-navy text-white text-xs rounded hover:bg-navy-dark"
+                >
+                  <Send size={11} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Agencies */}
+        {tab === 'agencies' && (
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs text-ink-muted">Mark agencies as alerted after contacting them.</p>
+              <span className={`text-[10px] font-bold ${alerted.size === agencies.length && agencies.length > 0 ? 'text-teal-dark' : 'text-amber-dark'}`}>
+                {alerted.size}/{agencies.length}
+              </span>
+            </div>
+            <div className="h-1 bg-paper-border rounded-full overflow-hidden mb-3">
+              <div
+                className="h-full bg-teal rounded-full transition-all"
+                style={{ width: `${agencies.length > 0 ? (alerted.size / agencies.length) * 100 : 0}%` }}
+              />
+            </div>
+
+            {agencies.map(ag => {
+              const done = alerted.has(ag.name);
+              return (
+                <div key={ag.name} className={`border rounded-sm p-3 transition-all ${done ? 'border-teal bg-teal-light/30' : 'border-paper-border bg-white'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-semibold text-ink">{ag.name}</p>
+                        {done && <CheckCircle size={11} className="text-teal" />}
+                      </div>
+                      <p className="text-[10px] text-ink-muted">{ag.role}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <a
+                        href={`tel:${ag.contact.replace(/\s/g, '')}`}
+                        className="text-[10px] px-2 py-1 border border-paper-border rounded hover:bg-paper-hover flex items-center gap-1"
+                      >
+                        <Phone size={9} /> {ag.contact}
+                      </a>
+                      <button
+                        onClick={() => setAlerted(p => {
+                          const n = new Set(p);
+                          n.has(ag.name) ? n.delete(ag.name) : n.add(ag.name);
+                          return n;
+                        })}
+                        className={`text-[10px] px-2.5 py-1 rounded font-bold transition-colors ${
+                          done ? 'bg-paper border border-paper-border text-ink-muted' : 'bg-teal text-white hover:bg-teal-dark'
+                        }`}
+                      >
+                        {done ? 'Undo' : '✓ Alert'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="mt-2 pt-3 border-t border-paper-border">
+              <p className="text-[10px] text-ink-muted mb-2">For full agency communication & coordination tools:</p>
+              <button
+                onClick={() => navigate(`/responder/ticket/${incident.id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2 border border-navy text-navy text-xs font-semibold rounded-sm hover:bg-navy-light"
+              >
+                <ExternalLink size={11} /> Open Agency Comm Hub
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* AI Triage */}
+        {tab === 'ai' && (
+          <div className="p-4 space-y-4">
+            {!aiRan && !aiLoading && (
+              <div className="text-center py-8 bg-paper border border-paper-border rounded-sm">
+                <Zap size={24} className="text-navy mx-auto mb-2 opacity-40" />
+                <p className="text-xs font-semibold text-ink mb-1">AI Triage Not Run</p>
+                <p className="text-[11px] text-ink-muted mb-4 max-w-[200px] mx-auto">
+                  Get ranked response recommendations with confidence scores.
+                </p>
+                <button
+                  onClick={() => {
+                    setAiLoad(true);
+                    setTimeout(() => { setAiLoad(false); setAiRan(true); }, 1800);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-navy text-white text-xs font-semibold rounded-sm hover:bg-navy-dark mx-auto"
+                >
+                  <Zap size={12} /> Run AI Triage
+                </button>
+              </div>
+            )}
+
+            {aiLoading && (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-7 w-7 border-b-2 border-navy mb-2" />
+                <p className="text-xs text-ink-muted">Analysing incident data…</p>
+              </div>
+            )}
+
+            {aiRan && !aiLoading && (
+              <>
+                <div className="flex items-center gap-2 bg-teal-light border border-teal rounded-sm px-3 py-2">
+                  <CheckCircle size={12} className="text-teal" />
+                  <p className="text-[11px] font-semibold text-teal-dark">
+                    AI Triage Complete · {incident.severity === 1 ? '91' : incident.severity === 2 ? '82' : '71'}% confidence
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {aiRecs.map((rec, i) => (
+                    <div key={i} className="bg-white border border-paper-border rounded-sm p-3">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 bg-navy text-white text-[9px] font-bold rounded flex items-center justify-center flex-shrink-0 mt-0.5">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-ink">{rec.action}</p>
+                          <div className="mt-1.5 h-1 bg-paper-border rounded-full overflow-hidden">
+                            <div className={`h-full ${rec.confidence >= 80 ? 'bg-teal' : 'bg-amber'} rounded-full`}
+                              style={{ width: `${rec.confidence}%` }} />
+                          </div>
+                          <p className="text-[10px] text-ink-muted mt-0.5">{rec.confidence}% confidence</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <p className="text-[10px] text-ink-muted bg-paper-hover rounded p-2.5 mb-3">
+                    For full triage with resource estimates, approval workflow, and operational dispatch tools:
+                  </p>
+                  <button
+                    onClick={() => navigate(`/responder/ticket/${incident.id}`)}
+                    className="w-full flex items-center justify-center gap-2 py-2 border border-navy text-navy text-xs font-bold rounded-sm hover:bg-navy-light"
+                  >
+                    <ExternalLink size={11} /> Open Full Triage View
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Timeline */}
+        {tab === 'timeline' && (
+          <div className="p-4">
+            <p className="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider mb-4">
+              {timelineEntries.length} event{timelineEntries.length !== 1 ? 's' : ''} · Most recent first
+            </p>
+            <div className="space-y-0">
+              {timelineEntries.map((entry, i) => (
+                <div key={i} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className={`w-3 h-3 rounded-full flex-shrink-0 mt-1 ${entry.dot}`} />
+                    {i < timelineEntries.length - 1 && <div className="w-px flex-1 bg-paper-border mt-1" />}
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <p className="text-xs font-semibold text-ink">{entry.label}</p>
+                    <p className="text-[11px] text-ink-muted mt-0.5">{entry.sub}</p>
+                    <p className="text-[10px] text-ink-muted font-mono mt-1">{fmtDate(entry.time)}</p>
+                  </div>
+                </div>
+              ))}
+              {timelineEntries.length === 0 && (
+                <p className="text-xs text-ink-muted text-center py-4">No timeline entries yet.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -667,54 +736,55 @@ function IncidentRow({
 // ─── Main IncidentManagement ──────────────────────────────────────────────────
 
 export function IncidentManagement() {
-  const [filters, setFilters] = useState<FilterState>({
-    search: '', status: 'all', severity: 'all', type: 'all',
-  });
-  const [sortKey, setSortKey]   = useState<SortKey>('created_at');
-  const [sortDir, setSortDir]   = useState<SortDir>('desc');
-  const [selected, setSelected] = useState<IncidentListItem | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const navigate = useNavigate();
 
-  const { data: incidentsData, isLoading, error, refetch } = useIncidents({ limit: 200 });
-  const allIncidents = incidentsData?.incidents || [];
+  const [search,      setSearch]      = useState('');
+  const [filterStatus, setFStatus]    = useState<IncidentStatus | 'all'>('all');
+  const [filterSev,    setFSev]       = useState<IncidentSeverity | 'all'>('all');
+  const [filterType,   setFType]      = useState<IncidentType | 'all'>('all');
+  const [sortKey,      setSortKey]    = useState<SortKey>('created_at');
+  const [sortDir,      setSortDir]    = useState<SortDir>('desc');
+  const [selected,     setSelected]   = useState<IncidentListItem | null>(null);
+  const [showFilters,  setShowFilters]= useState(false);
+  const [activeTab,    setActiveTab]  = useState<TabId>('all');
 
-  // Filter + sort
+  const { data, isLoading, refetch } = useIncidents({ limit: 200 });
+  const all = data?.incidents || [];
+
+  // Tab buckets
+  const TAB_DATA = useMemo((): Record<TabId, IncidentListItem[]> => ({
+    all:          all,
+    needs_review: all.filter(i => i.status === 'open' && !i.assignedTo),
+    active:       all.filter(i => ['triaging', 'dispatched', 'on_scene'].includes(i.status)),
+    resolved:     all.filter(i => ['resolved', 'closed'].includes(i.status)),
+  }), [all]);
+
+  // Filtered + sorted
   const incidents = useMemo(() => {
-    let list = allIncidents.filter(i => {
-      const q = filters.search.toLowerCase();
-      const matchSearch = !q
-        || i.title.toLowerCase().includes(q)
-        || i.locationText.toLowerCase().includes(q)
-        || i.ticketNumber.toLowerCase().includes(q);
-      const matchStatus   = filters.status   === 'all' || i.status   === filters.status;
-      const matchSeverity = filters.severity === 'all' || i.severity === Number(filters.severity);
-      const matchType     = filters.type     === 'all' || i.type     === filters.type;
-      return matchSearch && matchStatus && matchSeverity && matchType;
+    let list = TAB_DATA[activeTab].filter(i => {
+      const q  = search.toLowerCase();
+      const ms = !q || i.title.toLowerCase().includes(q) ||
+                      i.locationText.toLowerCase().includes(q) ||
+                      i.ticketNumber.toLowerCase().includes(q);
+      const mst = filterStatus === 'all' || i.status   === filterStatus;
+      const msv = filterSev    === 'all' || i.severity === Number(filterSev);
+      const mt  = filterType   === 'all' || i.type     === filterType;
+      return ms && mst && msv && mt;
     });
-
     list = [...list].sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === 'created_at') cmp = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      if (sortKey === 'severity')   cmp = a.severity - b.severity;
-      if (sortKey === 'status')     cmp = a.status.localeCompare(b.status);
-      if (sortKey === 'type')       cmp = a.type.localeCompare(b.type);
-      return sortDir === 'asc' ? -cmp : cmp;
+      let c = 0;
+      if (sortKey === 'created_at') c = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (sortKey === 'severity')   c = a.severity - b.severity;
+      if (sortKey === 'status')     c = a.status.localeCompare(b.status);
+      if (sortKey === 'type')       c = a.type.localeCompare(b.type);
+      return sortDir === 'asc' ? -c : c;
     });
-
     return list;
-  }, [allIncidents, filters, sortKey, sortDir]);
-
-  const setFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) =>
-    setFilters(prev => ({ ...prev, [key]: value }));
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('desc'); }
-  };
+  }, [TAB_DATA, activeTab, search, filterStatus, filterSev, filterType, sortKey, sortDir]);
 
   const handleExport = () => {
-    const csv = [
-      ['Ticket', 'Type', 'Title', 'Location', 'Severity', 'Status', 'Assigned To', 'Created'].join(','),
+    const rows = [
+      ['Ticket', 'Type', 'Title', 'Location', 'Severity', 'Status', 'Assigned To', 'Reporter', 'Created'].join(','),
       ...incidents.map(i => [
         i.ticketNumber,
         formatIncidentType(i.type),
@@ -723,30 +793,37 @@ export function IncidentManagement() {
         formatSeverity(i.severity),
         i.status,
         i.assignedTo?.name || 'Unassigned',
+        'Public',
         fmtDate(i.createdAt),
       ].join(',')),
     ].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([rows], { type: 'text/csv' }));
     a.download = `incidents-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
   };
 
-  const criticalCount = allIncidents.filter(i => i.severity === 1 && !['resolved', 'closed'].includes(i.status)).length;
+  const unassigned    = all.filter(i => i.status === 'open' && !i.assignedTo).length;
+  const criticalCount = all.filter(i => i.severity === 1 && !['resolved', 'closed'].includes(i.status)).length;
+
+  const TABS: { id: TabId; label: string; alert?: boolean }[] = [
+    { id: 'all',          label: 'All Incidents'        },
+    { id: 'needs_review', label: 'Needs Review',  alert: unassigned > 0 },
+    { id: 'active',       label: 'In Progress'          },
+    { id: 'resolved',     label: 'Resolved'             },
+  ];
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-paper">
+
       {/* Page header */}
       <div className="bg-white border-b border-paper-border px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-1">
           <div>
             <h1 className="text-2xl font-semibold text-ink">Incident Management</h1>
             <p className="text-sm text-ink-muted">
-              Monitor, triage, and coordinate all emergency incidents · {allIncidents.length} total
+              National overview · {all.length} incidents
+              {unassigned > 0 && <span className="text-red font-semibold"> · {unassigned} unreviewed</span>}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -756,23 +833,23 @@ export function IncidentManagement() {
             </button>
             <button onClick={handleExport}
               className="flex items-center gap-2 px-3 py-2 border border-paper-border rounded-sm hover:bg-paper-hover text-sm text-ink">
-              <Download size={14} /> Export CSV
+              <Download size={14} /> Export
             </button>
           </div>
         </div>
 
-        {/* Critical alert banner */}
+        {/* Critical banner */}
         {criticalCount > 0 && (
           <div className="mt-3 flex items-center gap-3 bg-red-light border border-red rounded-sm px-4 py-2.5">
-            <Siren size={14} className="text-red flex-shrink-0 animate-pulse" />
+            <Siren size={14} className="text-red animate-pulse flex-shrink-0" />
             <p className="text-sm font-bold text-red-dark">
-              {criticalCount} CRITICAL incident{criticalCount > 1 ? 's' : ''} active — immediate attention required
+              {criticalCount} CRITICAL incident{criticalCount > 1 ? 's' : ''} active — immediate action required
             </p>
             <button
-              onClick={() => setFilter('severity', 1 as IncidentSeverity)}
-              className="ml-auto text-xs font-semibold text-red-dark underline whitespace-nowrap"
+              onClick={() => { setActiveTab('all'); setFSev(1 as IncidentSeverity); }}
+              className="ml-auto text-xs text-red-dark font-semibold underline"
             >
-              View critical →
+              Filter →
             </button>
           </div>
         )}
@@ -780,49 +857,63 @@ export function IncidentManagement() {
 
       {/* Stats */}
       <div className="px-6 pt-4 flex-shrink-0">
-        <StatsBar incidents={allIncidents} />
+        <StatsBar incidents={all} />
       </div>
 
-      {/* Main content: split panel */}
-      <div className={`flex-1 overflow-hidden flex ${selected ? 'gap-0' : ''}`}>
+      {/* Split panel */}
+      <div className="flex-1 overflow-hidden flex">
 
-        {/* Left: list panel */}
-        <div className={`flex flex-col border-r border-paper-border bg-white overflow-hidden transition-all ${selected ? 'w-[440px] flex-shrink-0' : 'flex-1'}`}>
+        {/* Left: list */}
+        <div className={`flex flex-col border-r border-paper-border bg-white overflow-hidden transition-all ${
+          selected ? 'w-[440px] flex-shrink-0' : 'flex-1'
+        }`}>
+
+          {/* Tabs */}
+          <div className="flex border-b border-paper-border flex-shrink-0">
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setActiveTab(t.id)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+                  activeTab === t.id ? 'border-navy text-navy' : 'border-transparent text-ink-muted hover:text-ink'
+                }`}>
+                {t.label}
+                <span className={`text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 ${
+                  t.alert && activeTab !== t.id ? 'bg-red text-white animate-pulse' :
+                  activeTab === t.id ? 'bg-navy text-white' : 'bg-paper-border text-ink-muted'
+                }`}>{TAB_DATA[t.id].length}</span>
+              </button>
+            ))}
+          </div>
 
           {/* Search + filters */}
-          <div className="px-4 py-3 border-b border-paper-border space-y-2 flex-shrink-0">
+          <div className="px-3 py-2.5 border-b border-paper-border space-y-2 flex-shrink-0">
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted" />
                 <input
                   type="text"
-                  value={filters.search}
-                  onChange={e => setFilter('search', e.target.value)}
-                  placeholder="Search by title, location, ticket…"
-                  className="w-full pl-9 pr-3 py-2 border border-paper-border rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Title, ticket, location…"
+                  className="w-full pl-8 pr-2 py-1.5 border border-paper-border rounded-sm text-xs focus:outline-none focus:ring-1 focus:ring-navy"
                 />
               </div>
               <button
                 onClick={() => setShowFilters(v => !v)}
-                className={`flex items-center gap-1.5 px-3 py-2 border rounded-sm text-sm transition-colors ${
+                className={`flex items-center gap-1 px-2.5 py-1.5 border rounded-sm text-xs ${
                   showFilters ? 'border-navy bg-navy text-white' : 'border-paper-border hover:bg-paper-hover text-ink'
                 }`}
               >
-                <Filter size={14} /> Filters
-                {(filters.status !== 'all' || filters.severity !== 'all' || filters.type !== 'all') && (
-                  <span className="w-4 h-4 bg-red text-white text-[9px] rounded-full flex items-center justify-center">!</span>
+                <Filter size={12} />
+                {(filterStatus !== 'all' || filterSev !== 'all' || filterType !== 'all') && (
+                  <span className="w-3.5 h-3.5 bg-red text-white text-[8px] font-bold rounded-full flex items-center justify-center">!</span>
                 )}
               </button>
             </div>
 
-            {/* Expandable filters */}
             {showFilters && (
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <select
-                  value={filters.status}
-                  onChange={e => setFilter('status', e.target.value as IncidentStatus | 'all')}
-                  className="px-2 py-1.5 border border-paper-border rounded-sm text-xs bg-white focus:outline-none focus:ring-1 focus:ring-navy"
-                >
+              <div className="grid grid-cols-3 gap-1.5">
+                <select value={filterStatus} onChange={e => setFStatus(e.target.value as any)}
+                  className="px-2 py-1.5 border border-paper-border rounded text-[10px] bg-white focus:outline-none">
                   <option value="all">All Status</option>
                   <option value="open">Open</option>
                   <option value="triaging">Triaging</option>
@@ -831,23 +922,15 @@ export function IncidentManagement() {
                   <option value="resolved">Resolved</option>
                   <option value="closed">Closed</option>
                 </select>
-
-                <select
-                  value={filters.severity}
-                  onChange={e => setFilter('severity', e.target.value as any)}
-                  className="px-2 py-1.5 border border-paper-border rounded-sm text-xs bg-white focus:outline-none focus:ring-1 focus:ring-navy"
-                >
+                <select value={filterSev} onChange={e => setFSev(e.target.value as any)}
+                  className="px-2 py-1.5 border border-paper-border rounded text-[10px] bg-white focus:outline-none">
                   <option value="all">All Severity</option>
                   <option value={1}>Critical (1)</option>
                   <option value={2}>High (2)</option>
                   <option value={3}>Medium (3)</option>
                 </select>
-
-                <select
-                  value={filters.type}
-                  onChange={e => setFilter('type', e.target.value as IncidentType | 'all')}
-                  className="px-2 py-1.5 border border-paper-border rounded-sm text-xs bg-white focus:outline-none focus:ring-1 focus:ring-navy"
-                >
+                <select value={filterType} onChange={e => setFType(e.target.value as any)}
+                  className="px-2 py-1.5 border border-paper-border rounded text-[10px] bg-white focus:outline-none">
                   <option value="all">All Types</option>
                   <option value="medical">Medical</option>
                   <option value="flood">Flood</option>
@@ -860,57 +943,38 @@ export function IncidentManagement() {
               </div>
             )}
 
-            {/* Sort + result count */}
             <div className="flex items-center justify-between">
-              <p className="text-xs text-ink-muted">
-                {incidents.length} result{incidents.length !== 1 ? 's' : ''}
-                {incidents.length !== allIncidents.length && ` of ${allIncidents.length}`}
-              </p>
+              <p className="text-[10px] text-ink-muted">{incidents.length} result{incidents.length !== 1 ? 's' : ''}</p>
               <div className="flex items-center gap-1">
-                {(['created_at', 'severity', 'status', 'type'] as SortKey[]).map(k => (
-                  <button key={k} onClick={() => toggleSort(k)}
-                    className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                {(['created_at', 'severity', 'status'] as SortKey[]).map(k => (
+                  <button key={k}
+                    onClick={() => { if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(k); setSortDir('desc'); } }}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
                       sortKey === k ? 'bg-navy text-white' : 'bg-paper text-ink-muted hover:bg-paper-hover'
                     }`}>
                     {k === 'created_at' ? 'Date' : k.charAt(0).toUpperCase() + k.slice(1)}
-                    {sortKey === k && <ArrowUpDown size={9} />}
+                    {sortKey === k && (sortDir === 'desc' ? '↓' : '↑')}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Incident list */}
+          {/* List */}
           <div className="flex-1 overflow-y-auto divide-y divide-paper-border">
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-navy mb-2" />
-                  <p className="text-sm text-ink-muted">Loading incidents…</p>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="flex flex-col items-center justify-center py-16 text-ink-muted">
-                <AlertCircle size={36} className="mb-3 opacity-30" />
-                <p className="text-sm font-medium">Failed to load incidents</p>
-                <p className="text-xs mt-1">Please check your connection and try again</p>
-                <button
-                  onClick={() => refetch()}
-                  className="mt-3 flex items-center gap-1 text-xs text-teal hover:underline"
-                >
-                  <RefreshCw size={12} /> Try again
-                </button>
+                <div className="inline-block animate-spin rounded-full h-7 w-7 border-b-2 border-navy" />
               </div>
             ) : incidents.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-ink-muted">
-                <AlertCircle size={36} className="mb-3 opacity-30" />
-                <p className="text-sm font-medium">No incidents found</p>
-                <p className="text-xs mt-1">Try adjusting your filters</p>
+                <AlertCircle size={32} className="mb-3 opacity-30" />
+                <p className="text-sm">No incidents found</p>
                 <button
-                  onClick={() => setFilters({ search: '', status: 'all', severity: 'all', type: 'all' })}
-                  className="mt-3 text-xs text-teal hover:underline"
+                  onClick={() => { setSearch(''); setFStatus('all'); setFSev('all'); setFType('all'); }}
+                  className="mt-2 text-xs text-teal hover:underline"
                 >
-                  Clear all filters
+                  Clear filters
                 </button>
               </div>
             ) : (
@@ -929,16 +993,12 @@ export function IncidentManagement() {
         {/* Right: detail panel */}
         {selected && (
           <div className="flex-1 overflow-hidden">
-            <IncidentDetailPanel
+            <DetailPanel
               incident={selected}
               onClose={() => setSelected(null)}
+              navigate={navigate}
             />
           </div>
-        )}
-
-        {/* Empty state when nothing selected and narrow */}
-        {!selected && (
-          <div className="hidden" />
         )}
       </div>
     </div>

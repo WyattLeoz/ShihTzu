@@ -21,7 +21,7 @@ router.get(
   '/',
   optionalAuth,
   [
-    queryValidator('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    queryValidator('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
     queryValidator('offset').optional().isInt({ min: 0 }).toInt(),
     queryValidator('status').optional().isIn(['open', 'triaging', 'dispatched', 'on_scene', 'resolved', 'closed']),
     queryValidator('type').optional().isIn(['medical', 'flood', 'fire', 'road', 'infrastructure', 'civil', 'other']),
