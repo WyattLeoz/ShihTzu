@@ -501,6 +501,33 @@ i thinking for the incident can also like ai triage suggest but what u think is 
 
 
 
+prompt Queue Tmr:
+
+AI triage failed: Failed to start AI triage in the /responder/ticket Failed to load resource: the server responded with a status of 401 (Unauthorized), fix it
+
+In the /public, i dont see how the hospital tab will help the user, what if instead is communities communities or  like any volunteer efforts hosted  and for the alerts in /public when user
+click on it, make it so that user can see a recommended guide on what to do, then for the broadcast when logged in as government, for any broadcast
+based on any incident, government can broadcast it and have an ai button to ask it to help make a sample broadcast to be generated based on the data and
+best next steps, but government themselves can have finaly say and edit it then publish themselves, then they can also remove current broadcasts
+
+for the team overview, i think better to have separate teams for each category like floods etc and then subteams within the team which can be managed then the 
+shift schedule is for the subteams at a glance
+
+for the volunteer efforts, in the map i want it to instead be like instead of show individual volunteers, it shows that is is a groups of volunters based off the volunteer activity hosted by community,
+then in the /public the public can also register to aid and volunteer in the volunteer activity. 
+
+government not so interested individual cases, they more interested in numbers for the dashboard, fix it
+can add alerts so pass a certain percentage the government set themself then give warning/issue, then ai can suggest based
+on past record how to proceed, for governments also show map and resources
+
+for each incident the process flow might diff and might need communicate between many different agencies and sub-teams like contact scdf north region team2 and the police and also ask for help
+and request for volunteer aid for this incident type, help fix and make
+
+make full code for me to copy paste for the file, give me file path
+
+
+
+make aws architecture.md with archiecture diagram md for me to see how setup full diagram and flow\
 
 
 
@@ -508,4 +535,26 @@ i thinking for the incident can also like ai triage suggest but what u think is 
 
 
 
-make aws architecture.md with archiecture diagram md for me to see how setup full diagram and flow
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+chonk:
+In the /public, i dont see how the hospital tab will help the user, what if instead is communities communities or  like any volunteer efforts hosted  and for the alerts in /public when user click on it, make it so that user can see a recommended guide on what to do, then for the broadcast when logged in as government, for any broadcast based on any incident, government can broadcast it and have an ai button to ask it to help make a sample broadcast to be generated based on the data and best next steps, but government themselves can have finaly say and edit it then publish themselves, then they can also remove current broadcasts  for the team overview, i think better to have separate teams for each category like floods etc and then subteams within the team which can be managed then the  shift schedule is for the subteams at a glance  for the volunteer efforts, in the map i want it to instead be like instead of show individual volunteers, it shows that is is a groups of volunters based off the volunteer activity hosted by community, then in the /public the public can also register to aid and volunteer in the volunteer activity.   government not so interested individual cases, they more interested in numbers for the dashboard, fix it can add alerts so pass a certain percentage the government set themself then give warning/issue, then ai can suggest based on past record how to proceed, for governments also show map and resources  for each incident the process flow might diff and might need communicate between many different agencies and sub-teams like contact scdf north region team2 and the police and also ask for help and request for volunteer aid for this incident type
+like for the incident help me make it so it is like how responders and government would use it for real life scenarios, can maybe do it like how airport controler does it for their air traffic control
+
+help me make and help fix and make  make full code for me to copy paste for the file, give me file path
