@@ -130,13 +130,16 @@ export function useIncidents(params?: {
 }) {
   return useQuery({
     queryKey: ['incidents', params],
-    queryFn: () =>
-      apiClient.get<{
+    queryFn: async () => {
+      const response = await apiClient.get<{
         incidents: IncidentListItem[];
         total: number;
         limit: number;
         offset: number;
-      }>('/incidents', { params }),
+      }>('/incidents', { params });
+      console.log('API Response - Incidents:', response);
+      return response;
+    },
     staleTime: 30000,
   });
 }

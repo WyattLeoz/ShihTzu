@@ -4,6 +4,17 @@ import { ZodError } from 'zod';
 // Import removed - no longer using Anthropic
 import logger from '../config/logger.js';
 
+// Extend Express Request type for authenticated requests
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    id: number;
+    email: string;
+    fullName: string;
+    role: 'citizen' | 'responder' | 'supervisor' | 'gov_admin';
+    unit?: string;
+  };
+}
+
 interface ErrorResponse {
   error: {
     code: string;
