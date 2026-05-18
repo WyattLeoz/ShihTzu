@@ -1,4 +1,5 @@
 import { AIOption, AITextEvent, AICompleteEvent, AIErrorEvent } from '../types';
+import { authStore } from '../stores/authStore';
 
 export async function streamAITriage(incidentId: string): Promise<{
   onText: (callback: (text: string) => void) => void;
@@ -8,7 +9,7 @@ export async function streamAITriage(incidentId: string): Promise<{
   abort: () => void;
 }> {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-  const token = localStorage.getItem('quickaid-auth') ? JSON.parse(localStorage.getItem('quickaid-auth') || '{}').state?.accessToken : null;
+  const token = authStore.getState().accessToken;
 
   let abortController: AbortController | null = null;
   const textCallbacks: ((text: string) => void)[] = [];

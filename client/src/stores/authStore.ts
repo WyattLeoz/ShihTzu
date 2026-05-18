@@ -97,7 +97,7 @@ export const authStore = create<AuthState>()(
     }),
     {
       name: 'quickaid-auth',
-      partialize: (state) => ({ user: state.user }), // Only persist user, not token
+      partialize: (state) => ({ user: state.user, accessToken: state.accessToken }), // Persist user and token
     }
   )
 );

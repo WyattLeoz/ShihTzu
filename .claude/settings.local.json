@@ -10,7 +10,8 @@
       "Bash(curl:*)",
       "Bash(xargs grep -l \"checkAuth\\\\|login\")",
       "Bash(psql:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(echo:*)"
     ]
   }
 }
