@@ -33,9 +33,6 @@ router.get(
   ],
   validateRequest,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    console.log('GET /api/incidents called with query:', req.query);
-    console.log('User:', req.user);
-
     const {
       limit = 20,
       offset = 0,
@@ -121,12 +118,6 @@ router.get(
     const countResult = await query({
       text: `SELECT COUNT(*) as total FROM incidents ${whereClause}`,
       values: params,
-    });
-
-    console.log('Query result:', {
-      incidentsCount: result.rows.length,
-      totalCount: countResult.rows[0].total,
-      firstIncident: result.rows[0]
     });
 
     res.json({

@@ -678,15 +678,6 @@ export function IncidentManagement() {
   const { data: incidentsData, isLoading, error, refetch } = useIncidents({ limit: 200 });
   const allIncidents = incidentsData?.incidents || [];
 
-  // Debug logging
-  console.log('Incidents Management Debug:', {
-    incidentsData,
-    allIncidents,
-    isLoading,
-    error,
-    allIncidentsLength: allIncidents.length
-  });
-
   // Filter + sort
   const incidents = useMemo(() => {
     let list = allIncidents.filter(i => {
@@ -909,7 +900,6 @@ export function IncidentManagement() {
                 >
                   <RefreshCw size={12} /> Try again
                 </button>
-              </div>
               </div>
             ) : incidents.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-ink-muted">
