@@ -307,4 +307,114 @@ Respond with JSON only: {"title":"...","message":"..."}`;
   })
 );
 
+// POST /ai/draft-incident — called from NewIncident wizard
+router.post('/draft-incident',
+  requireAuth, requireRole('responder', 'supervisor', 'gov_admin'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { signals } = req.body as { signals: any[] };
+
+    if (!signals || signals.length === 0) {
+      res.status(400).json({ error: { code: 'SIGNALS_REQUIRED', message: 'At least one signal is required' } });
+      return;
+    }
+
+    // ── Try Gemini ────────────────────────────────────────────────────────────
+    if (env.GEMINI_API_KEY) {
+      try {
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        const sigSummary = signals.map((s: any) =>
+          `[${s.source.toUpperCase()}] ${s.title}: ${s.description} (Location: ${s.location || 'unknown'})`
+        ).join('\n');
+
+        const prompt = `You are an emergency dispatch officer for Singapore Civil Defence Force.
+Analyse the following live data signals from government monitoring systems and generate a formal incident report.
+
+SIGNALS:
+${sigSummary}
+
+Respond ONLY with a valid JSON object (no markdown, no fences):
+{
+  "title": "<concise incident title, under 80 chars>",
+  "type": "<one of: fire|flood|medical|road|infrastructure|civil|other>",
+  "severity": <1 for critical, 2 for high, 3 for medium>,
+  "locationText": "<primary location of the incident>",
+  "description": "<3–5 sentences. What is happening, what is the immediate risk, what evidence supports this assessment>",
+  "estimatedCasualties": <number or 0>,
+  "estimatedAffectedPop": <estimated number of residents/people affected>,
+  "immediateActions": "<2–3 most critical immediate actions for the first responding unit>",
+  "resourcesNeeded": ["<resource 1>", "<resource 2>", "<resource 3>"],
+  "confidence": <0–100, how confident the AI is based on available signal data>,
+  "reasoning": "<one sentence explaining why these signals indicate this incident type>"
+}`;
+
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          res.json({ draft: parsed, source: 'ai' });
+          return;
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Gemini draft-incident failed — using mock');
+      }
+    }
+
+    // ── Mock draft (deterministic from signals) ──────────────────────────────
+    const allText = signals.map((s: any) => `${s.title} ${s.description}`).join(' ').toLowerCase();
+    const loc = signals.find((s: any) => s.location)?.location || 'Singapore';
+
+    let type = 'other', severity = 3, title = 'Emergency Incident';
+    let estimatedCasualties = 0, estimatedAffectedPop = 500;
+    let resources: string[] = ['SCDF Response Team', 'Ambulance standby', 'SPF patrol'];
+
+    if (allText.includes('flood') || allText.includes('water level') || allText.includes('drainage')) {
+      type = 'flood'; severity = allText.includes('critical') || allText.includes('trapped') ? 1 : 2;
+      title = `Flash Flood — ${loc}`;
+      estimatedAffectedPop = 2000;
+      resources = ['SCDF Flood Response', 'PUB Drainage Ops', '2× Ambulance', 'PA Evacuation Team'];
+    } else if (allText.includes('fire') || allText.includes('blaze')) {
+      type = 'fire'; severity = 1;
+      title = `Fire Incident — ${loc}`;
+      resources = ['SCDF Fire Engine', 'SCDF Rescue Tender', 'Ambulance'];
+    } else if (allText.includes('medical') || allText.includes('outbreak') || allText.includes('dengue') || allText.includes('health')) {
+      type = 'medical'; severity = 2;
+      title = `Health Alert — ${loc}`;
+      resources = ['MOH Emergency Team', 'Ambulance', 'SGH A&E Standby'];
+    } else if (allText.includes('traffic') || allText.includes('road') || allText.includes('accident') || allText.includes('collision')) {
+      type = 'road'; severity = 2;
+      title = `Road Incident — ${loc}`;
+      resources = ['SPF Traffic Police', 'SCDF Ambulance', 'LTA Traffic Ops'];
+    } else if (allText.includes('haze') || allText.includes('psi') || allText.includes('rain') || allText.includes('weather')) {
+      type = 'infrastructure'; severity = 3;
+      title = `Weather Emergency — ${loc}`;
+      resources = ['NEA Monitoring', 'PA Community Response', 'Ambulance standby'];
+    }
+
+    const signalCount = signals.length;
+    const confidence = Math.min(50 + signalCount * 8, 85);
+
+    res.json({
+      draft: {
+        title, type, severity, locationText: loc,
+        description: `Multiple monitoring systems have flagged an emergency situation at ${loc}. ` +
+          `${signalCount} data signal${signalCount > 1 ? 's' : ''} from ${[...new Set(signals.map((s: any) => s.source.toUpperCase()))].join(', ')} ` +
+          `indicate an active ${type} event requiring immediate response. ` +
+          `Community reports and sensor data corroborate the situation. ` +
+          `Immediate dispatch is recommended pending on-ground confirmation.`,
+        estimatedCasualties,
+        estimatedAffectedPop,
+        immediateActions: `1. Dispatch primary response unit to ${loc}. 2. Alert nearest hospital A&E for standby. 3. Notify PA Community Network for evacuation support if required.`,
+        resourcesNeeded: resources,
+        confidence,
+        reasoning: `Convergent signals from ${signals.map((s: any) => s.source).join(', ')} consistently indicate ${type} event conditions at this location.`,
+      },
+      source: 'mock',
+    });
+  })
+);
+
 export default router;

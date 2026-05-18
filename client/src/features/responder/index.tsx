@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ResponderPortal } from './ResponderPortal';
 import { SupervisorView, TeamOverview } from './SupervisorView';
 import { QueueView } from './QueueView';
-import { NewIncidentForm } from './NewIncidentForm';
+import { NewIncident } from './NewIncident';
 import { TicketDetail } from './TicketDetail';
 import { ResourcesView } from './ResourcesView';
 import { MapView } from './MapView';
@@ -21,7 +21,7 @@ export default function ResponderRouter() {
       <SupervisorView>
         <Routes>
           <Route index element={<QueueView />} />
-          <Route path="new" element={<NewIncidentForm />} />
+          <Route path="new" element={<NewIncident />} />
           <Route path="ticket/:id" element={<TicketDetail />} />
           <Route path="team" element={<TeamOverview />} />
           <Route path="analytics" element={<PerformanceDashboard />} />
@@ -39,7 +39,7 @@ export default function ResponderRouter() {
     <ResponderPortal>
       <Routes>
         <Route index element={<QueueView />} />
-        <Route path="new" element={<NewIncidentForm />} />
+        <Route path="new" element={<NewIncident />} />
         <Route path="ticket/:id" element={<TicketDetail />} />
         <Route path="resources" element={<ResourcesView />} />
         <Route path="map" element={<MapView />} />
