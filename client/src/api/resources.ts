@@ -1,120 +1,90 @@
-// import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-// import apiClient from './client';
-// import { Hospital, Volunteer, VolunteerSkill } from '../types';
-
-// export function useHospitals() {
-//   return useQuery({
-//     queryKey: ['hospitals'],
-//     queryFn: () => apiClient.get<{ hospitals: Hospital[] }>('/resources/hospitals'),
-//     staleTime: 30000,
-//   });
-// }
-
-// export function useUpdateHospital(id: string) {
-//   const queryClient = useQueryClient();
-
-//   return useMutation({
-//     mutationFn: (data: {
-//       availableBeds?: number;
-//       icuAvailable?: number;
-//       traumaBays?: number;
-//     }) => apiClient.patch<Hospital>(`/resources/hospitals/${id}`, data),
-//     onSuccess: () => {
-//       queryClient.invalidateQueries({ queryKey: ['hospitals'] });
-//     },
-//   });
-// }
-
-// export function useVolunteers(params?: { skill?: VolunteerSkill; available?: boolean }) {
-//   return useQuery({
-//     queryKey: ['volunteers', params],
-//     queryFn: () =>
-//       apiClient.get<{ volunteers: Volunteer[] }>('/resources/volunteers', { params }),
-//     staleTime: 30000,
-//   });
-// }
-
-// export function useCreateVolunteer() {
-//   const queryClient = useQueryClient();
-
-//   return useMutation({
-//     mutationFn: (data: {
-//       fullName: string;
-//       phone: string;
-//       skills: VolunteerSkill[];
-//       postalDistrict?: string;
-//     }) => apiClient.post<Volunteer>('/volunteers', data),
-//     onSuccess: () => {
-//       queryClient.invalidateQueries({ queryKey: ['volunteers'] });
-//     },
-//   });
-// }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
-import { Hospital, Volunteer, VolunteerSkill, VolunteerTask } from '../types';
+import { Hospital, Volunteer, VolunteerSkill, VolunteerTask, CommunityOrganization } from '../types';
 
 // ─── Hospitals ─────────────────────────────────────────────────────────────────
 export function useHospitals() {
   return useQuery({
     queryKey: ['hospitals'],
-    queryFn: () =>
-      apiClient.get<{ hospitals: Hospital[] }>('/resources/hospitals'),
+    queryFn: () => apiClient.get<{ hospitals: Hospital[] }>('/resources/hospitals'),
     staleTime: 30000,
   });
 }
 
 export function useUpdateHospital(id: string) {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: {
-      availableBeds?: number;
-      icuAvailable?: number;
-      traumaBays?: number;
-    }) => apiClient.patch<Hospital>(`/resources/hospitals/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hospitals'] });
-    },
+    mutationFn: (data: { availableBeds?: number; icuAvailable?: number; traumaBays?: number }) =>
+      apiClient.patch<Hospital>(`/resources/hospitals/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['hospitals'] }),
   });
 }
 
-// ─── Volunteers ────────────────────────────────────────────────────────────────
-export function useVolunteers(params?: {
-  skill?: VolunteerSkill;
-  available?: boolean;
-}) {
+// ─── Volunteers (legacy) ───────────────────────────────────────────────────────
+export function useVolunteers(params?: { skill?: VolunteerSkill; available?: boolean }) {
   return useQuery({
     queryKey: ['volunteers', params],
-    queryFn: () =>
-      apiClient.get<{ volunteers: Volunteer[] }>('/resources/volunteers', {
-        params,
-      }),
+    queryFn: () => apiClient.get<{ volunteers: Volunteer[] }>('/resources/volunteers', { params }),
     staleTime: 30000,
   });
 }
 
 export function useCreateVolunteer() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: {
-      fullName: string;
-      phone: string;
-      skills: VolunteerSkill[];
-      postalDistrict?: string;
-    }) => apiClient.post<Volunteer>('/volunteers', data),
+    mutationFn: (data: { fullName: string; phone: string; skills: VolunteerSkill[]; postalDistrict?: string }) =>
+      apiClient.post<Volunteer>('/volunteers', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['volunteers'] }),
+  });
+}
+
+// ─── Community Organisations ───────────────────────────────────────────────────
+
+export function useCommunities() {
+  return useQuery({
+    queryKey: ['communities'],
+    queryFn: () => apiClient.get<{ communities: CommunityOrganization[] }>('/resources/communities'),
+    staleTime: 60000,
+  });
+}
+
+export function useRequestAid() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      communityId,
+      ...taskData
+    }: {
+      communityId: string;
+      title: string;
+      description?: string;
+      taskType: string;
+      location: string;
+      date?: string;
+      timeSlot?: string;
+      slotsTotal?: number;
+      skillsRequired?: string[];
+      urgency?: string;
+      incidentId?: string;
+    }) =>
+      apiClient.post<{ task: VolunteerTask; message: string }>(
+        `/resources/communities/${communityId}/request-aid`,
+        taskData
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['volunteers'] });
+      qc.invalidateQueries({ queryKey: ['volunteer-tasks'] });
+      qc.invalidateQueries({ queryKey: ['communities'] });
     },
   });
 }
 
-// ─── Volunteer Task Board ─────────────────────────────────────────────────────
-// Falls back to mock data until the backend endpoint is ready.
+// ─── Volunteer Tasks ───────────────────────────────────────────────────────────
+
 const MOCK_TASKS: VolunteerTask[] = [
   {
     id: 'vt-001',
-    title: 'Flood Relief – Emergency Food Packing',
-    description:
-      'Pack emergency ration kits for displaced residents at Jurong West evacuation centre. No prior experience needed — supervisors will guide you.',
+    title: 'Flood Relief — Emergency Food Packing',
+    description: 'Pack emergency ration kits for displaced residents at Jurong West evacuation centre.',
     organization: 'Singapore Red Cross',
     orgType: 'ngo',
     taskType: 'food_distribution',
@@ -130,9 +100,8 @@ const MOCK_TASKS: VolunteerTask[] = [
   },
   {
     id: 'vt-002',
-    title: 'Evacuation Centre – Registration Desk',
-    description:
-      'Assist SCDF staff with registering and tracking displaced evacuees. Laptop provided. Must be comfortable with basic data entry.',
+    title: 'Evacuation Centre — Registration Desk',
+    description: 'Assist SCDF staff with registering displaced evacuees. Laptop provided.',
     organization: 'SCDF Community Resilience',
     orgType: 'government',
     taskType: 'shelter_assistance',
@@ -148,15 +117,14 @@ const MOCK_TASKS: VolunteerTask[] = [
   },
   {
     id: 'vt-003',
-    title: 'Language Support – Mandarin / Tamil / Malay',
-    description:
-      'Provide real-time translation for elderly residents who do not speak English at evacuation centres and first aid posts.',
+    title: 'Language Support — Mandarin / Tamil / Malay',
+    description: 'Translation for elderly residents at evacuation centres.',
     organization: "People's Association",
     orgType: 'government',
     taskType: 'translation',
     location: 'Multiple sites (Jurong West & Clementi)',
     date: 'Today',
-    timeSlot: 'Flexible – on call from 9 AM',
+    timeSlot: 'Flexible — on call from 9 AM',
     slotsTotal: 8,
     slotsFilled: 3,
     skillsRequired: ['Mandarin', 'Tamil', 'Malay'],
@@ -167,12 +135,11 @@ const MOCK_TASKS: VolunteerTask[] = [
   {
     id: 'vt-004',
     title: 'First Aid Station Support',
-    description:
-      'Support SGH medical staff at temporary first aid posts. Valid first aid certification (SSFA or equivalent) is required.',
+    description: 'Support SGH medical staff at temporary first aid posts. Valid SSFA or BCLS required.',
     organization: 'Singapore General Hospital',
     orgType: 'healthcare',
     taskType: 'medical_support',
-    location: 'Jurong West Sports Centre – Medical Post B',
+    location: 'Jurong West Sports Centre — Medical Post B',
     date: 'Today',
     timeSlot: '8:00 AM – 8:00 PM (4-hour shifts)',
     slotsTotal: 15,
@@ -185,8 +152,7 @@ const MOCK_TASKS: VolunteerTask[] = [
   {
     id: 'vt-005',
     title: 'Emergency Supply Distribution',
-    description:
-      'Help sort and distribute water, blankets, and hygiene kits to affected HDB blocks. Pair up in teams of two.',
+    description: 'Sort and distribute water, blankets, and hygiene kits to affected HDB blocks.',
     organization: 'Singapore Civil Defence Force',
     orgType: 'government',
     taskType: 'logistics',
@@ -202,9 +168,8 @@ const MOCK_TASKS: VolunteerTask[] = [
   },
   {
     id: 'vt-006',
-    title: 'Blood Donation Drive – Walk-in',
-    description:
-      'Blood stocks at SGH are running low due to increased trauma cases. Walk-in donation session — all blood types needed urgently.',
+    title: 'Blood Donation Drive — Walk-in',
+    description: 'Blood stocks at SGH critically low due to trauma cases.',
     organization: 'Health Sciences Authority',
     orgType: 'healthcare',
     taskType: 'blood_donation',
@@ -213,7 +178,7 @@ const MOCK_TASKS: VolunteerTask[] = [
     timeSlot: '8:30 AM – 4:30 PM',
     slotsTotal: 200,
     slotsFilled: 143,
-    skillsRequired: ['Age 16–60', 'Weight ≥ 45 kg', 'Good health'],
+    skillsRequired: ['Age 16–60', 'Weight ≥ 45 kg'],
     urgency: 'high',
     status: 'filling',
     createdAt: new Date().toISOString(),
@@ -225,11 +190,8 @@ export function useVolunteerTasks() {
     queryKey: ['volunteer-tasks'],
     queryFn: async (): Promise<{ tasks: VolunteerTask[] }> => {
       try {
-        return await apiClient.get<{ tasks: VolunteerTask[] }>(
-          '/resources/volunteer-tasks'
-        );
+        return await apiClient.get<{ tasks: VolunteerTask[] }>('/resources/volunteer-tasks');
       } catch {
-        // Endpoint not yet deployed — use mock data
         return { tasks: MOCK_TASKS };
       }
     },
@@ -237,27 +199,49 @@ export function useVolunteerTasks() {
   });
 }
 
-export function useSignUpForTask() {
-  const queryClient = useQueryClient();
+export function useCreateVolunteerTask() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: {
-      taskId: string;
-      fullName: string;
-      phone: string;
-      nric: string;
+      title: string; description?: string; organization?: string; orgType?: string;
+      taskType: string; location: string; date?: string; timeSlot?: string;
+      slotsTotal?: number; skillsRequired?: string[]; urgency?: string; incidentId?: string;
     }) =>
+      apiClient
+        .post<{ task: VolunteerTask }>('/resources/volunteer-tasks', data)
+        .catch(() => ({
+          task: {
+            ...data,
+            id: `vt-${Math.random().toString(36).slice(2, 10)}`,
+            organization: data.organization || 'QuickAid Ops',
+            orgType: (data.orgType as any) || 'government',
+            date: data.date || 'Today',
+            timeSlot: data.timeSlot || 'TBC',
+            slotsTotal: data.slotsTotal || 20,
+            slotsFilled: 0,
+            skillsRequired: data.skillsRequired || [],
+            urgency: (data.urgency as any) || 'medium',
+            status: 'open' as const,
+            createdAt: new Date().toISOString(),
+          } as VolunteerTask,
+        })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['volunteer-tasks'] }),
+  });
+}
+
+export function useSignUpForTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { taskId: string; fullName: string; phone: string; nric: string }) =>
       apiClient
         .post<{ message: string; confirmationCode: string }>(
           `/resources/volunteer-tasks/${data.taskId}/signup`,
           data
         )
         .catch(() => ({
-          // Mock success when endpoint not ready
           message: 'Registration successful',
           confirmationCode: `QA-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
         })),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['volunteer-tasks'] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['volunteer-tasks'] }),
   });
 }

@@ -222,3 +222,35 @@ export interface SSEEvent {
 export interface AITextEvent     { type: 'text';     content: string }
 export interface AICompleteEvent { type: 'complete'; options: AIOption[] }
 export interface AIErrorEvent    { type: 'error';    error: string }
+
+
+
+
+// ─── Community Organisation ───────────────────────────────────────────────────
+export type CommunityOrgType =
+  | 'ngo' | 'grassroots' | 'healthcare' | 'government' | 'corporate' | 'religious';
+
+export type CommunityStatus = 'active' | 'standby' | 'deployed' | 'inactive';
+
+export interface CommunityOrganization {
+  id: string;
+  name: string;
+  shortName: string;
+  type: CommunityOrgType;
+  description: string;
+  contactPerson: string;
+  contactPhone: string;
+  contactEmail: string;
+  address: string;
+  skillAreas: string[];
+  totalMembers: number;
+  availableMembers: number;
+  deployedMembers: number;
+  activeTasks: number;
+  status: CommunityStatus;
+  certifications: string[];
+  coverageAreas: string[];
+  isVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
