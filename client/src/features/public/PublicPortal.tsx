@@ -1775,17 +1775,6 @@ export function PublicPortal() {
     <div className="min-h-screen bg-paper">
       <div className="max-w-md mx-auto border-x border-paper-border min-h-screen relative pb-24">
 
-        {/* Emergency banner */}
-        {hasEmergency && (
-          <div className="bg-red text-white px-4 py-2.5 flex items-center gap-2">
-            <AlertTriangle size={15} className="flex-shrink-0 animate-pulse" />
-            <p className="text-xs font-semibold flex-1">
-              Active emergency in your area — stay informed and follow official instructions.
-            </p>
-            <a href="tel:995" className="text-xs underline font-bold flex-shrink-0">Call 995</a>
-          </div>
-        )}
-
         {/* Header */}
         <header className="bg-white border-b border-paper-border px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -1798,13 +1787,10 @@ export function PublicPortal() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <a href="tel:995"
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-red text-white text-xs font-bold rounded-sm hover:bg-red-dark transition-colors">
-              <Phone size={12} /> 995
-            </a>
+
             <Link to="/login"
               className="px-2.5 py-1.5 border border-paper-border rounded-sm text-xs font-medium text-ink hover:bg-paper-hover transition-colors">
-              Login
+              Log out
             </Link>
           </div>
         </header>
