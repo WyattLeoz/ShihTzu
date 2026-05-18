@@ -6,10 +6,10 @@ import { useIncidents } from '../../api/incidents';
 import { useHospitals, useVolunteers } from '../../api/resources';
 import { useBroadcasts } from '../../api/broadcasts';
 import {
-  LogOut, LayoutDashboard, AlertTriangle, Activity,
-  Users, Megaphone, Settings, BarChart3, Shield, RefreshCw,
+  LogOut, LayoutDashboard, Activity,
+  Megaphone, Settings, BarChart3, Shield, RefreshCw,
   TrendingUp, TrendingDown, AlertCircle, CheckCircle,
-  Bell, Map as MapIcon,
+  Bell, AlertTriangle, Users,
 } from 'lucide-react';
 import { Badge } from '../../components/Badge';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -26,11 +26,8 @@ export function GovPortal({ children }: GovPortalProps) {
 
   const navItems = [
     { path: '/gov',            label: 'Dashboard',   icon: LayoutDashboard },
-    { path: '/gov/incidents',  label: 'Incidents',   icon: AlertTriangle },
-    { path: '/gov/resources',  label: 'Resources',   icon: Activity },
     { path: '/gov/broadcasts', label: 'Broadcasts',  icon: Megaphone },
     { path: '/gov/analytics',  label: 'Analytics',   icon: BarChart3 },
-    { path: '/gov/map',        label: 'Live Map',    icon: MapIcon },
     { path: '/gov/settings',   label: 'Settings',    icon: Settings },
   ];
 

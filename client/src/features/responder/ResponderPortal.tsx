@@ -119,14 +119,15 @@ import { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useSSE } from '../../hooks/useSSE';
-import { LogOut, LayoutDashboard, Plus, Map as MapIcon, Users } from 'lucide-react';
+import { LogOut, LayoutDashboard, Plus, Map as MapIcon, Users, BarChart3, Activity } from 'lucide-react';
 import { Badge } from '../../components/Badge';
 
 interface ResponderPortalProps {
   children?: ReactNode;
+  isSupervisor?: boolean;
 }
 
-export function ResponderPortal({ children }: ResponderPortalProps) {
+export function ResponderPortal({ children, isSupervisor = false }: ResponderPortalProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -135,6 +136,11 @@ export function ResponderPortal({ children }: ResponderPortalProps) {
   const navItems = [
     { path: '/responder', label: 'Queue', icon: LayoutDashboard },
     { path: '/responder/new', label: 'New Incident', icon: Plus },
+    ...(isSupervisor ? [
+      { path: '/responder/team', label: 'Teams', icon: Users },
+      { path: '/responder/analytics', label: 'Performance', icon: BarChart3 },
+      { path: '/responder/schedule', label: 'Schedule', icon: Activity },
+    ] : []),
     { path: '/responder/resources', label: 'Resources', icon: Users },
     { path: '/responder/map', label: 'Map', icon: MapIcon },
   ];

@@ -896,6 +896,11 @@ function TimelineTab({
       label: `Claimed by ${incident.assignedTo.name}`,
       sub: `Unit: ${incident.assignedTo.unit}`,
       time: incident.updatedAt,
+    }, {
+      type: 'notification',
+      label: 'Notification sent to reporter',
+      sub: 'SMS/Email: Your incident has been validated and assigned',
+      time: incident.updatedAt,
     }] : []),
     ...timeline.map(t => ({
       type: t.updateType || 'note',
@@ -909,15 +914,23 @@ function TimelineTab({
       sub: `Field note by ${n.author}`,
       time: n.time,
     })),
+    ...(incident.status === 'resolved' && incident.resolvedAt ? [{
+      type: 'notification',
+      label: 'Resolution notification sent',
+      sub: 'SMS/Email: Your incident has been resolved successfully',
+      time: incident.resolvedAt,
+    }] : []),
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
   const DOT: Record<string, string> = {
-    create:        'bg-navy',
-    assign:        'bg-teal',
-    status_change: 'bg-amber',
-    dispatch:      'bg-teal',
-    note:          'bg-ink-muted',
-    field_update:  'bg-purple-500',
+    create:         'bg-navy',
+    assign:         'bg-teal',
+    status_change:  'bg-amber',
+    dispatch:       'bg-teal',
+    note:           'bg-ink-muted',
+    field_update:   'bg-purple-500',
+    notification:   'bg-blue-500',
+    system:         'bg-gray-400',
   };
 
   return (

@@ -1,20 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { GovPortal, GovDashboard } from './GovPortal';
-import { IncidentManagement } from './IncidentManagement';
-import { ResourceManagement } from './ResourceManagement';
 import { BroadcastManagement } from './Broadcastmanagement';
-import { MapView } from '../responder/MapView';
 
 export default function GovRouter() {
   return (
     <GovPortal>
       <Routes>
         <Route index                element={<GovDashboard />}        />
-        <Route path="incidents"     element={<IncidentManagement />}  />
-        <Route path="resources"     element={<ResourceManagement />}  />
         <Route path="broadcasts"    element={<BroadcastManagement />} />
         <Route path="analytics"     element={<AnalyticsDashboard />}  />
-        <Route path="map"           element={<MapView />}             />
         <Route path="settings"      element={<SystemSettings />}      />
         <Route path="*"             element={<Navigate to="/gov" replace />} />
       </Routes>

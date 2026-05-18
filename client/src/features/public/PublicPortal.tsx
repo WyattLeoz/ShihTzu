@@ -16,7 +16,7 @@ import {
   Shield, Info, Phone, ChevronDown, ChevronUp,
   BookOpen, Flame, Droplets, Car, Wrench, Flag,
   HelpCircle, ExternalLink, ArrowRight, Calendar,
-  User, AlertCircle, FileText,
+  User, AlertCircle, FileText, Search, ChevronRight, Bell,
 } from 'lucide-react';
 import { VolunteerRegistration } from './VolunteerRegistration';
 
@@ -1557,6 +1557,16 @@ function ReportView({ onOpenForm }: { onOpenForm: () => void }) {
 
       <section>
         <h2 className="text-xs font-mono font-semibold text-ink-muted uppercase mb-3 flex items-center gap-2">
+          <Activity size={13} /> Track Your Report Status
+        </h2>
+        <p className="text-xs text-ink-muted mb-3 leading-relaxed">
+          Enter your ticket number to check the status of your submitted incident report.
+        </p>
+        <CitizenStatusTracker />
+      </section>
+
+      <section>
+        <h2 className="text-xs font-mono font-semibold text-ink-muted uppercase mb-3 flex items-center gap-2">
           <Info size={13} /> Official Resources
         </h2>
         <div className="space-y-2">
@@ -1575,6 +1585,210 @@ function ReportView({ onOpenForm }: { onOpenForm: () => void }) {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ─── Citizen Status Tracker ────────────────────────────────────────────────────────
+
+function CitizenStatusTracker() {
+  const [ticketNumber, setTicketNumber] = useState('');
+  const [searchedIncident, setSearchedIncident] = useState<IncidentListItem | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
+
+  const { data: incidentsData } = useIncidents({ limit: 100 });
+  const incidents = incidentsData?.incidents || [];
+
+  const handleSearch = () => {
+    if (!ticketNumber.trim()) {
+      setError('Please enter a ticket number');
+      return;
+    }
+
+    setSearching(true);
+    setError('');
+
+    // Search for incident by ticket number
+    const found = incidents.find(i =>
+      i.ticketNumber.toLowerCase() === ticketNumber.toLowerCase().trim()
+    );
+
+    setTimeout(() => {
+      setSearching(false);
+      if (found) {
+        setSearchedIncident(found);
+      } else {
+        setError('Incident not found. Please check your ticket number.');
+        setSearchedIncident(null);
+      }
+    }, 500);
+  };
+
+  const getStatusStep = (status: string) => {
+    const steps = [
+      { key: 'open', label: 'Report Received', icon: FileText, desc: 'Your report has been received and is queued for review' },
+      { key: 'triaging', label: 'Under Review', icon: Activity, desc: 'A responder is reviewing your report' },
+      { key: 'dispatched', label: 'Responder Assigned', icon: Users, desc: 'A responder has been assigned to your incident' },
+      { key: 'on_scene', label: 'Responder on Scene', icon: Navigation, desc: 'The responder is at the location and assisting' },
+      { key: 'resolved', label: 'Resolved', icon: CheckCircle, desc: 'The incident has been resolved successfully' },
+      { key: 'closed', label: 'Closed', icon: CheckCircle, desc: 'The incident has been closed' },
+    ];
+
+    const currentIndex = steps.findIndex(s => s.key === status);
+    return { steps, currentIndex };
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Search input */}
+      <div className="flex gap-2">
+        <div className="flex-1 relative">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+          <input
+            type="text"
+            value={ticketNumber}
+            onChange={e => setTicketNumber(e.target.value)}
+            placeholder="Ticket number (e.g., QA-001234)"
+            className="w-full pl-9 pr-3 py-2.5 border border-paper-border rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-navy font-mono"
+            onKeyPress={e => e.key === 'Enter' && handleSearch()}
+          />
+        </div>
+        <button
+          onClick={handleSearch}
+          disabled={searching}
+          className="px-4 py-2.5 bg-navy text-white rounded-sm text-sm font-medium hover:bg-navy-dark disabled:opacity-50 transition-colors"
+        >
+          {searching ? 'Searching…' : 'Track'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-light border border-red rounded-sm p-3 text-xs text-red-dark">
+          {error}
+        </div>
+      )}
+
+      {/* Status display */}
+      {searchedIncident && (
+        <div className="bg-white border border-paper-border rounded-sm p-4 space-y-4">
+          {/* Incident header */}
+          <div className="flex items-start justify-between gap-3 pb-3 border-b border-paper-border">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-mono text-xs font-bold text-ink-muted">{searchedIncident.ticketNumber}</span>
+                <StatusBadge status={searchedIncident.status} />
+              </div>
+              <h3 className="text-sm font-semibold text-ink">{searchedIncident.title}</h3>
+              <p className="text-xs text-ink-muted mt-1 flex items-center gap-1">
+                <MapPin size={10} /> {searchedIncident.locationText}
+              </p>
+            </div>
+            <div className={`text-xs font-bold px-2 py-1 rounded ${
+              searchedIncident.severity === 1 ? 'bg-red text-white' :
+              searchedIncident.severity === 2 ? 'bg-amber text-white' :
+              'bg-teal text-white'
+            }`}>
+              {formatSeverity(searchedIncident.severity)}
+            </div>
+          </div>
+
+          {/* Status timeline */}
+          <div>
+            <h4 className="text-xs font-semibold text-ink mb-3 flex items-center gap-2">
+              <Activity size={12} /> Status Timeline
+            </h4>
+            {(() => {
+              const { steps, currentIndex } = getStatusStep(searchedIncident.status);
+
+              return (
+                <div className="space-y-3">
+                  {steps.map((step, idx) => {
+                    const Icon = step.icon;
+                    const isCurrent = idx === currentIndex;
+                    const isPast = idx < currentIndex;
+                    const isFuture = idx > currentIndex;
+
+                    return (
+                      <div key={step.key} className="flex items-start gap-3">
+                        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                          isCurrent ? 'bg-navy text-white' :
+                          isPast ? 'bg-teal text-white' :
+                          'bg-paper-border text-ink-muted'
+                        }`}>
+                          <Icon size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className={`text-xs font-semibold ${
+                              isCurrent ? 'text-navy' :
+                              isPast ? 'text-teal-dark' :
+                              'text-ink-muted'
+                            }`}>
+                              {step.label}
+                            </p>
+                            {isCurrent && (
+                              <span className="flex items-center gap-1 text-[10px] text-amber-dark animate-pulse">
+                                <Bell size={8} /> In Progress
+                              </span>
+                            )}
+                          </div>
+                          <p className={`text-[10px] mt-0.5 ${
+                            isCurrent ? 'text-ink' :
+                            isPast ? 'text-ink-muted' :
+                            'text-ink-muted opacity-60'
+                          }`}>
+                            {step.desc}
+                          </p>
+                        </div>
+                        {isCurrent && <ChevronRight size={12} className="text-navy flex-shrink-0" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Assigned responder */}
+          {searchedIncident.assignedTo && (
+            <div className="bg-paper rounded-sm p-3 mt-3">
+              <p className="text-[10px] font-medium text-ink-muted mb-1">Assigned Responder</p>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 bg-navy-light rounded-full flex items-center justify-center">
+                  <span className="text-navy text-[10px] font-bold">
+                    {searchedIncident.assignedTo.name.charAt(0)}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-ink">{searchedIncident.assignedTo.name}</p>
+                  <p className="text-[10px] text-ink-muted">{searchedIncident.assignedTo.unit}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Timing info */}
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            <div className="bg-paper rounded-sm p-2">
+              <p className="text-ink-muted mb-1">Reported</p>
+              <p className="font-mono font-medium text-ink">
+                {new Date(searchedIncident.createdAt).toLocaleTimeString('en-US', {
+                  hour: '2-digit', minute: '2-digit'
+                })}
+              </p>
+            </div>
+            <div className="bg-paper rounded-sm p-2">
+              <p className="text-ink-muted mb-1">Last Updated</p>
+              <p className="font-mono font-medium text-ink">
+                {new Date(searchedIncident.updatedAt).toLocaleTimeString('en-US', {
+                  hour: '2-digit', minute: '2-digit'
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,16 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useIncidents, useClaimIncident } from '../../api/incidents';
+import { useIncidents, useClaimIncident, useUpdateIncident } from '../../api/incidents';
 import { authStore } from '../../stores/authStore';
 import { IncidentListItem } from '../../types';
 import { formatIncidentType } from '../../lib/formatters';
 import { StatusBadge } from '../../components/StatusBadge';
+import { showToast } from '../../components/Toast';
 import {
   Plus, AlertCircle, Clock, MapPin, UserPlus, Eye,
   RefreshCw, Search, AlertTriangle, Activity, Siren,
   Flame, Droplets, Heart, Car, Building2, Flag, HelpCircle,
   ChevronRight, Users, CheckCircle, TrendingUp, Phone,
-  FileText, Shield,
+  FileText, Shield, XCircle, Copy, AlertOctagon,
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ function StatsBar({ all, needsReview, mine, inProgress }: {
           label: 'Needs Review',
           value: needsReview,
           icon: <AlertCircle size={18} className="text-red" />,
-          sub: 'awaiting a responder',
+          sub: 'awaiting validation',
           alert: needsReview > 0,
         },
         {
@@ -188,8 +189,8 @@ function NeedsReviewCard({
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-navy text-white text-xs font-bold rounded-sm hover:bg-navy-dark disabled:opacity-50 transition-colors"
           >
             {claiming
-              ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Claiming…</>
-              : <><UserPlus size={13} /> Claim & Review</>}
+              ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Validating…</>
+              : <><UserPlus size={13} /> Validate & Review</>}
           </button>
           <button
             onClick={onView}
@@ -289,6 +290,114 @@ function QueueRow({
   );
 }
 
+// ─── Validation Modal ────────────────────────────────────────────────────────────
+
+function ValidationModal({
+  incident,
+  onClose,
+  onValidate,
+  claiming,
+}: {
+  incident: IncidentListItem;
+  onClose: () => void;
+  onValidate: (action: 'valid' | 'duplicate' | 'false_alarm') => void;
+  claiming: boolean;
+}) {
+  const sev = SEV[incident.severity] || SEV[3];
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-sm w-full max-w-md">
+        <div className="px-6 py-4 border-b border-paper-border flex items-center justify-between">
+          <h2 className="font-semibold text-ink flex items-center gap-2">
+            <Shield size={18} className="text-navy" /> Validate Incident
+          </h2>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink text-xl">×</button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Incident summary */}
+          <div className="bg-paper rounded-sm p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono text-xs font-bold text-ink-muted">{incident.ticketNumber}</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${sev.badge} ${sev.text}`}>
+                {sev.label}
+              </span>
+            </div>
+            <h3 className="text-sm font-semibold text-ink">{incident.title}</h3>
+            <p className="text-xs text-ink-muted mt-1 flex items-center gap-1">
+              <MapPin size={10} /> {incident.locationText}
+            </p>
+            <p className="text-xs text-ink-muted mt-2 leading-relaxed">{incident.description}</p>
+          </div>
+
+          <p className="text-xs text-ink-muted text-center">
+            Review this citizen report and validate before it enters the active queue.
+          </p>
+
+          {/* Validation options */}
+          <div className="space-y-3">
+            <button
+              onClick={() => onValidate('valid')}
+              disabled={claiming}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-teal-light border-2 border-teal rounded-sm hover:bg-teal disabled:opacity-50 transition-colors group"
+            >
+              <div className="w-8 h-8 bg-teal rounded-full flex items-center justify-center shrink-0">
+                <CheckCircle size={16} className="text-white" />
+              </div>
+              <div className="text-left flex-1">
+                <p className="text-sm font-semibold text-teal-dark">Valid Incident</p>
+                <p className="text-[10px] text-teal-dark">Proceed to active queue and assign responder</p>
+              </div>
+              <ChevronRight size={16} className="text-teal-dark group-hover:translate-x-1 transition-transform" />
+            </button>
+
+            <button
+              onClick={() => onValidate('duplicate')}
+              disabled={claiming}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-amber-light border-2 border-amber rounded-sm hover:bg-amber disabled:opacity-50 transition-colors group"
+            >
+              <div className="w-8 h-8 bg-amber rounded-full flex items-center justify-center shrink-0">
+                <Copy size={16} className="text-white" />
+              </div>
+              <div className="text-left flex-1">
+                <p className="text-sm font-semibold text-amber-dark">Duplicate Report</p>
+                <p className="text-[10px] text-amber-dark">This is a duplicate of an existing incident</p>
+              </div>
+              <ChevronRight size={16} className="text-amber-dark group-hover:translate-x-1 transition-transform" />
+            </button>
+
+            <button
+              onClick={() => onValidate('false_alarm')}
+              disabled={claiming}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-red-light border-2 border-red rounded-sm hover:bg-red disabled:opacity-50 transition-colors group"
+            >
+              <div className="w-8 h-8 bg-red rounded-full flex items-center justify-center shrink-0">
+                <AlertOctagon size={16} className="text-white" />
+              </div>
+              <div className="text-left flex-1">
+                <p className="text-sm font-semibold text-red-dark">False Alarm</p>
+                <p className="text-[10px] text-red-dark">Not a genuine emergency - close incident</p>
+              </div>
+              <ChevronRight size={16} className="text-red-dark group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-paper-border">
+          <button
+            onClick={onClose}
+            disabled={claiming}
+            className="w-full py-2.5 border border-paper-border rounded-sm text-sm font-medium hover:bg-paper-hover disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Empty States ─────────────────────────────────────────────────────────────
 
 function EmptyState({ icon, title, sub, action }: {
@@ -354,14 +463,16 @@ function IncidentTable({
 export function QueueView() {
   const navigate    = useNavigate();
   const user        = authStore(s => s.user);
-  const isSupervisor = user?.role === 'supervisor' || user?.role === 'gov_admin';
+  const isSupervisor = user?.role === 'gov_admin';
 
   const [activeTab,  setActiveTab]  = useState<'review' | 'mine' | 'active' | 'resolved'>('review');
   const [search,     setSearch]     = useState('');
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [validatingIncident, setValidatingIncident] = useState<IncidentListItem | null>(null);
 
   const { data, isLoading, refetch } = useIncidents({ limit: 200 });
   const { mutate: claimIncident } = useClaimIncident();
+  const { mutate: updateIncident } = useUpdateIncident();
 
   const all = data?.incidents || [];
 
@@ -404,11 +515,58 @@ export function QueueView() {
 
   // ── Claim handler ──
   const handleClaim = (incident: IncidentListItem) => {
-    setClaimingId(incident.id);
-    claimIncident(incident.id, {
-      onSuccess: () => { setClaimingId(null); navigate(`/responder/ticket/${incident.id}`); },
-      onError:   () => { setClaimingId(null); navigate(`/responder/ticket/${incident.id}`); },
-    });
+    setValidatingIncident(incident);
+  };
+
+  // ── Validation handlers ──
+  const handleValidation = (action: 'valid' | 'duplicate' | 'false_alarm') => {
+    if (!validatingIncident) return;
+
+    setClaimingId(validatingIncident.id);
+
+    if (action === 'valid') {
+      // Valid incident - claim it and proceed to active queue
+      claimIncident(validatingIncident.id, {
+        onSuccess: () => {
+          setClaimingId(null);
+          setValidatingIncident(null);
+          showToast('success', `Validated incident ${validatingIncident.ticketNumber} - now active`);
+          navigate(`/responder/ticket/${validatingIncident.id}`);
+        },
+        onError: () => {
+          setClaimingId(null);
+          setValidatingIncident(null);
+          showToast('error', 'Failed to validate incident');
+        },
+      });
+    } else {
+      // Duplicate or false alarm - close the incident
+      updateIncident(validatingIncident.id, {
+        status: 'closed',
+        aiTriageData: {
+          ...validatingIncident,
+          aiTriageData: {
+            ...validatingIncident.aiTriageData,
+            validationAction: action,
+            validatedBy: user?.id,
+            validatedAt: new Date().toISOString(),
+          }
+        }
+      } as any, {
+        onSuccess: () => {
+          setClaimingId(null);
+          setValidatingIncident(null);
+          const actionText = action === 'duplicate' ? 'marked as duplicate' : 'marked as false alarm';
+          showToast('info', `Incident ${validatingIncident.ticketNumber} ${actionText}`);
+          refetch();
+        },
+        onError: () => {
+          setClaimingId(null);
+          setValidatingIncident(null);
+          showToast('error', 'Failed to update incident');
+        },
+      });
+    }
   };
 
   const criticalUnassigned = needsReview.filter(i => i.severity === 1).length;
@@ -478,9 +636,11 @@ export function QueueView() {
               <ChevronRight size={12} />
               <span className="bg-white border border-paper-border rounded px-2 py-1">② Appears here under "Needs Review"</span>
               <ChevronRight size={12} />
-              <span className="bg-white border border-paper-border rounded px-2 py-1">③ Responder claims & triages</span>
+              <span className="bg-white border border-paper-border rounded px-2 py-1">③ Responder validates (valid/duplicate/false alarm)</span>
               <ChevronRight size={12} />
-              <span className="bg-white border border-paper-border rounded px-2 py-1">④ Dispatched → On Scene → Resolved</span>
+              <span className="bg-white border border-paper-border rounded px-2 py-1">④ Valid incidents enter active queue</span>
+              <ChevronRight size={12} />
+              <span className="bg-white border border-paper-border rounded px-2 py-1">⑤ Dispatched → On Scene → Resolved</span>
             </div>
           </div>
         </div>
@@ -550,7 +710,7 @@ export function QueueView() {
                 <div className="flex items-center gap-2 bg-amber-light border border-amber rounded-sm px-3 py-2.5 text-xs font-medium text-amber-dark">
                   <AlertTriangle size={13} />
                   {filtered.length} citizen report{filtered.length !== 1 ? 's' : ''} waiting —
-                  sorted by severity, then time elapsed. Claim to take ownership.
+                  sorted by severity, then time elapsed. Validate before active queue.
                 </div>
                 {isSupervisor && (
                   <p className="text-xs text-ink-muted">
@@ -657,6 +817,16 @@ export function QueueView() {
           )}
         </div>
       )}
-    </div>
+
+    {/* Validation Modal */}
+    {validatingIncident && (
+      <ValidationModal
+        incident={validatingIncident}
+        onClose={() => setValidatingIncident(null)}
+        onValidate={handleValidation}
+        claiming={claimingId === validatingIncident.id}
+      />
+    )}
+  </div>
   );
 }

@@ -3,7 +3,7 @@ export interface User {
   id: string;
   email: string;
   fullName: string;
-  role: 'citizen' | 'responder' | 'supervisor' | 'gov_admin';
+  role: 'citizen' | 'responder' | 'supervisor' | 'gov_admin'; // supervisor for legacy support
   unit?: string;
   phone?: string;
   isActive: boolean;

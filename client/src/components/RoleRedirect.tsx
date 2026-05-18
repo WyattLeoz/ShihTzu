@@ -12,13 +12,13 @@ export function RoleRedirect() {
       return;
     }
 
-    // Redirect based on role
+    // Redirect based on role (handle legacy supervisor role)
     switch (user.role) {
       case 'gov_admin':
         navigate('/gov', { replace: true });
         break;
+      case 'supervisor':  // Legacy support for supervisor role
       case 'responder':
-      case 'supervisor':
         navigate('/responder', { replace: true });
         break;
       case 'citizen':
