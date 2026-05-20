@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useIncidents } from '../../api/incidents';
 import { useHospitals } from '../../api/resources';
 import { useVolunteerTasks } from '../../api/resources';
@@ -13,6 +13,8 @@ import { Badge } from '../../components/Badge';
 import { StatusBadge } from '../../components/StatusBadge';
 import { formatIncidentType, formatSeverity } from '../../lib/formatters';
 import { IncidentType } from '../../types';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 type FilterType = 'all' | 'incidents' | 'hospitals' | 'volunteers';
 type SeverityFilter = 'all' | 1 | 2 | 3;
@@ -214,6 +216,9 @@ export function MapView() {
   const [selectedItem,    setSelectedItem]    = useState<any>(null);
   const [zoom,            setZoom]            = useState(12);
   const [refreshKey,      setRefreshKey]      = useState(0);
+  const [mapRefreshKey,   setMapRefreshKey]   = useState(0);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
 
   const { data: incidentsData,  isLoading: incL, refetch: refI } = useIncidents({ limit: 50 });
   const { data: hospitalsData,  isLoading: hosL, refetch: refH } = useHospitals();
@@ -235,24 +240,114 @@ export function MapView() {
     refI(); refH(); refT();
   };
 
-  // Generate map positions
+  // Initialize Leaflet map
+  useEffect(() => {
+    if (!mapRef.current || mapInstanceRef.current) return;
+
+    // Create Leaflet map centered on Singapore
+    const map = L.map(mapRef.current, {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([1.3521, 103.8198], 12);
+
+    // Add OpenStreetMap tile layer (free, no API key needed)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      minZoom: 10
+    }).addTo(map);
+
+    mapInstanceRef.current = map;
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // Update zoom state when map zoom changes
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
+    const handleZoom = () => {
+      setZoom(map.getZoom());
+    };
+
+    map.on('zoomend', handleZoom);
+
+    return () => {
+      map.off('zoomend', handleZoom);
+    };
+  }, []);
+
+  const handleZoomIn = () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setZoom(Math.min(mapInstanceRef.current.getZoom() + 1, 18));
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setZoom(Math.max(mapInstanceRef.current.getZoom() - 1, 10));
+    }
+  };
+
+  const handleResetView = () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([1.3521, 103.8198], 12);
+    }
+  };
+
+  // Convert map coordinates to percentage positions for custom markers
+  const latLngToPercent = (lat: number, lng: number) => {
+    if (!mapInstanceRef.current) return { x: 50, y: 50 };
+
+    const bounds = mapInstanceRef.current.getBounds();
+    const x = ((lng - bounds.getWest()) / (bounds.getEast() - bounds.getWest())) * 100;
+    const y = ((bounds.getNorth() - lat) / (bounds.getNorth() - bounds.getSouth())) * 100;
+
+    return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
+  };
+
+  // Generate map positions using Singapore coordinates
+  const singaporeBounds = { north: 1.4708, south: 1.2334, east: 104.0536, west: 103.6368 };
+
   const incidentPoints = filteredIncidents.map((inc, i) => ({
     kind: 'incident', data: inc,
-    x: 18 + ((i * 41 + 8) % 67), y: 18 + ((i * 31 + 12) % 62),
+    lat: singaporeBounds.south + ((i * 41 + 8) % 100) / 100 * (singaporeBounds.north - singaporeBounds.south),
+    lng: singaporeBounds.west + ((i * 31 + 12) % 100) / 100 * (singaporeBounds.east - singaporeBounds.west),
   }));
 
   const hospitalPoints = hospitals.map((h, i) => ({
     kind: 'hospital', data: h,
-    x: 12 + ((i * 47 + 22) % 72), y: 12 + ((i * 37 + 35) % 68),
+    lat: singaporeBounds.south + ((i * 47 + 22) % 100) / 100 * (singaporeBounds.north - singaporeBounds.south),
+    lng: singaporeBounds.west + ((i * 37 + 35) % 100) / 100 * (singaporeBounds.east - singaporeBounds.west),
   }));
 
   const taskPoints = tasks.map((t, i) => ({
     kind: 'volunteer', data: t,
-    x: 8  + ((i * 61 + 4)  % 80), y: 8  + ((i * 43 + 18) % 76),
+    lat: singaporeBounds.south + ((i * 61 + 4) % 100) / 100 * (singaporeBounds.north - singaporeBounds.south),
+    lng: singaporeBounds.west + ((i * 43 + 18) % 100) / 100 * (singaporeBounds.east - singaporeBounds.west),
   }));
 
   const urgencyTotal = { critical: 0, high: 0, medium: 0, low: 0 };
   tasks.forEach(t => { urgencyTotal[t.urgency] = (urgencyTotal[t.urgency] || 0) + 1; });
+
+  // Force re-render of markers when map moves
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
+    const handleMoveEnd = () => {
+      setMapRefreshKey(k => k + 1);
+    };
+
+    map.on('moveend', handleMoveEnd);
+
+    return () => {
+      map.off('moveend', handleMoveEnd);
+    };
+  }, [filteredIncidents.length, hospitals.length, tasks.length]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -316,60 +411,56 @@ export function MapView() {
       </div>
 
       {/* Map canvas */}
-      <div className="flex-1 relative overflow-hidden" style={{ background: '#e8edf3' }}>
-        {/* Grid */}
-        <div className="absolute inset-0 opacity-20">
-          <svg width="100%" height="100%">
-            <defs>
-              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#94a3b8" strokeWidth="0.5" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-          </svg>
-        </div>
-
-        {/* Roads */}
-        <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none">
-          <line x1="0" y1="40%" x2="100%" y2="40%" stroke="#64748b" strokeWidth="3" />
-          <line x1="0" y1="70%" x2="100%" y2="70%" stroke="#64748b" strokeWidth="2" />
-          <line x1="30%" y1="0" x2="30%" y2="100%" stroke="#64748b" strokeWidth="3" />
-          <line x1="65%" y1="0" x2="65%" y2="100%" stroke="#64748b" strokeWidth="2" />
-        </svg>
+      <div className="flex-1 relative overflow-hidden">
+        {/* Leaflet Map Container */}
+        <div
+          ref={mapRef}
+          className="absolute inset-0 z-0"
+          style={{ height: '100%', width: '100%' }}
+        />
 
         {/* Incident markers */}
-        {showIncidents && incidentPoints.map((p, i) => (
-          <IncidentMarker key={i} incident={p.data as IncidentListItem}
-            x={p.x} y={p.y}
-            onClick={() => setSelectedItem(selectedItem === p ? null : p)}
-            isSelected={selectedItem === p}
-          />
-        ))}
+        {showIncidents && incidentPoints.map((p, i) => {
+          const { x, y } = latLngToPercent(p.lat, p.lng);
+          return (
+            <IncidentMarker key={`${i}-${mapRefreshKey}`} incident={p.data as IncidentListItem}
+              x={x} y={y}
+              onClick={() => setSelectedItem(selectedItem === p ? null : p)}
+              isSelected={selectedItem === p}
+            />
+          );
+        })}
 
         {/* Hospital markers */}
-        {showHospitals && hospitalPoints.map((p, i) => (
-          <HospitalMarker key={i} hospital={p.data as Hospital}
-            x={p.x} y={p.y}
-            onClick={() => setSelectedItem(selectedItem === p ? null : p)}
-            isSelected={selectedItem === p}
-          />
-        ))}
+        {showHospitals && hospitalPoints.map((p, i) => {
+          const { x, y } = latLngToPercent(p.lat, p.lng);
+          return (
+            <HospitalMarker key={`${i}-${mapRefreshKey}`} hospital={p.data as Hospital}
+              x={x} y={y}
+              onClick={() => setSelectedItem(selectedItem === p ? null : p)}
+              isSelected={selectedItem === p}
+            />
+          );
+        })}
 
         {/* Volunteer cluster markers */}
-        {showVolunteers && taskPoints.map((p, i) => (
-          <VolunteerClusterMarker key={i} task={p.data as VolunteerTask}
-            x={p.x} y={p.y}
-            onClick={() => setSelectedItem(selectedItem === p ? null : p)}
-            isSelected={selectedItem === p}
-          />
-        ))}
+        {showVolunteers && taskPoints.map((p, i) => {
+          const { x, y } = latLngToPercent(p.lat, p.lng);
+          return (
+            <VolunteerClusterMarker key={`${i}-${mapRefreshKey}`} task={p.data as VolunteerTask}
+              x={x} y={y}
+              onClick={() => setSelectedItem(selectedItem === p ? null : p)}
+              isSelected={selectedItem === p}
+            />
+          );
+        })}
 
         {/* Zoom controls */}
         <div className="absolute top-4 right-4 flex flex-col gap-1.5">
           {[
-            { icon: <ZoomIn  size={16} />, action: () => setZoom(z => Math.min(z + 1, 18)) },
-            { icon: <ZoomOut size={16} />, action: () => setZoom(z => Math.max(z - 1, 10)) },
-            { icon: <Navigation size={16} />, action: () => setZoom(12) },
+            { icon: <ZoomIn  size={16} />, action: handleZoomIn },
+            { icon: <ZoomOut size={16} />, action: handleZoomOut },
+            { icon: <Navigation size={16} />, action: handleResetView },
           ].map((btn, i) => (
             <button key={i} onClick={btn.action}
               className="p-2 bg-white border border-paper-border rounded-sm hover:bg-paper-hover shadow-sm">

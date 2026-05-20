@@ -34,4 +34,9 @@
   .border-l-navy {
     border-left: 4px solid theme('colors.navy.DEFAULT');
   }
+
+  /* Leaflet Map Styles */
+  .leaflet-container {
+    background: #f8fafc;
+  }
 }
