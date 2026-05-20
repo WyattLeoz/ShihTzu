@@ -312,13 +312,34 @@ export function MapView() {
   // Generate map positions using Singapore coordinates
   const singaporeBounds = { north: 1.4708, south: 1.2334, east: 104.0536, west: 103.6368 };
 
-  const incidentPoints = filteredIncidents.map((inc, i) => ({
-    kind: 'incident', data: inc,
-    lat: singaporeBounds.south + ((i * 41 + 8) % 100) / 100 * (singaporeBounds.north - singaporeBounds.south),
-    lng: singaporeBounds.west + ((i * 31 + 12) % 100) / 100 * (singaporeBounds.east - singaporeBounds.west),
+  // Enhanced incident variety - add mock incidents for more visual diversity
+  const incidentTypes = ['fire', 'flood', 'medical', 'road', 'infrastructure', 'civil'] as const;
+  const mockIncidents = Array.from({ length: 8 }, (_, i) => ({
+    kind: 'incident' as const,
+    data: {
+      id: `mock-${i}`,
+      title: `${incidentTypes[i % incidentTypes.length].charAt(0).toUpperCase() + incidentTypes[i % incidentTypes.length].slice(1)} Incident #${i + 1}`,
+      type: incidentTypes[i % incidentTypes.length] as IncidentType,
+      severity: Math.floor(Math.random() * 3) + 1,
+      status: 'active' as const,
+      locationText: `Singapore Area ${i + 1}`,
+      createdAt: new Date().toISOString()
+    } as IncidentListItem,
+    lat: singaporeBounds.south + ((i * 17 + 3) % 100) / 100 * (singaporeBounds.north - singaporeBounds.south),
+    lng: singaporeBounds.west + ((i * 23 + 7) % 100) / 100 * (singaporeBounds.east - singaporeBounds.west),
   }));
 
-  const hospitalPoints = hospitals.map((h, i) => ({
+  const incidentPoints = [
+    ...filteredIncidents.map((inc, i) => ({
+      kind: 'incident', data: inc,
+      lat: singaporeBounds.south + ((i * 41 + 8) % 100) / 100 * (singaporeBounds.north - singaporeBounds.south),
+      lng: singaporeBounds.west + ((i * 31 + 12) % 100) / 100 * (singaporeBounds.east - singaporeBounds.west),
+    })),
+    ...mockIncidents
+  ];
+
+  // Reduced hospital points - only show 3 major hospitals
+  const hospitalPoints = hospitals.slice(0, 3).map((h, i) => ({
     kind: 'hospital', data: h,
     lat: singaporeBounds.south + ((i * 47 + 22) % 100) / 100 * (singaporeBounds.north - singaporeBounds.south),
     lng: singaporeBounds.west + ((i * 37 + 35) % 100) / 100 * (singaporeBounds.east - singaporeBounds.west),
@@ -423,7 +444,7 @@ export function MapView() {
         {showIncidents && incidentPoints.map((p, i) => {
           const { x, y } = latLngToPercent(p.lat, p.lng);
           return (
-            <IncidentMarker key={`${i}-${mapRefreshKey}`} incident={p.data as IncidentListItem}
+            <IncidentMarker key={`${i}-incident-${mapRefreshKey}`} incident={p.data as IncidentListItem}
               x={x} y={y}
               onClick={() => setSelectedItem(selectedItem === p ? null : p)}
               isSelected={selectedItem === p}
@@ -515,14 +536,14 @@ export function MapView() {
         {/* Volunteer summary badge */}
         {showVolunteers && tasks.length > 0 && (
           <div className="absolute top-4 left-4 bg-white border border-paper-border rounded-sm px-3 py-2 shadow-sm">
-            <p className="text-[10px] text-ink-muted font-semibold uppercase mb-1">Active Volunteer Groups</p>
+            <p className="text-[10px] text-ink-muted font-semibold uppercase mb-1">Operational Response Status</p>
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-red font-bold">{urgencyTotal.critical || 0} Critical</span>
-              <span className="text-amber-dark font-bold">{urgencyTotal.high || 0} Urgent</span>
-              <span className="text-teal-dark font-bold">{urgencyTotal.medium || 0} Needed</span>
+              <span className="text-red font-bold">{urgencyTotal.critical || 0} Immediate Response</span>
+              <span className="text-amber-dark font-bold">{urgencyTotal.high || 0} Priority Response</span>
+              <span className="text-teal-dark font-bold">{urgencyTotal.medium || 0} Support Required</span>
             </div>
             <p className="text-[10px] text-ink-muted mt-0.5">
-              {tasks.reduce((s, t) => s + t.slotsFilled, 0)} volunteers deployed
+              {tasks.reduce((s, t) => s + t.slotsFilled, 0)} responders deployed
             </p>
           </div>
         )}

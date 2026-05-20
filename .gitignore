@@ -2,6 +2,16 @@
 .env
 .env.local
 .env.production
+.env.development
+
+# All environment files except examples
+.env.*
+!.env.example
+!.env.*.example
+
+# Claude AI files
+.claude/
+CLAUDE.md
 
 # Dependencies
 node_modules/
